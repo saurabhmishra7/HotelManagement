@@ -1,2 +1,12 @@
-package com.InnovaServe.restaurant.repository;import com.InnovaServe.restaurant.entity.RestaurantOrder;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;
-public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder,UUID>{Optional<RestaurantOrder> findByTenantIdAndId(UUID t,UUID id);List<RestaurantOrder> findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(UUID t,String source,String status);}
+package com.InnovaServe.restaurant.repository;
+
+import com.InnovaServe.restaurant.entity.RestaurantOrder;
+import java.util.*;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder, UUID> {
+  Optional<RestaurantOrder> findByTenantIdAndId(UUID t, UUID id);
+
+  List<RestaurantOrder> findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(
+      UUID t, String source, String status);
+}

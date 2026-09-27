@@ -1,20 +1,260 @@
 package com.InnovaServe.restaurant.service;
-import com.InnovaServe.restaurant.entity.*;import com.InnovaServe.restaurant.repository.*;import com.InnovaServe.core.service.*;import com.InnovaServe.core.entity.*;import com.InnovaServe.core.repository.*;import com.InnovaServe.stay.repository.*;import com.InnovaServe.stay.entity.*;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;import java.util.*;import java.math.*;
-@Service @Transactional(readOnly=true)public class RestaurantService{
- private final TenantContext tenant;private final MenuCategoryRepository categories;private final MenuItemRepository items;private final DiningTableRepository tables;private final RestaurantOrderRepository orders;private final OrderItemRepository orderItems;private final KotBatchRepository batches;private final RestaurantBillRepository bills;private final BillingService billing;private final RoomRepository rooms;private final StayRepository stays;
- public RestaurantService(TenantContext t,MenuCategoryRepository c,MenuItemRepository i,DiningTableRepository tables,RestaurantOrderRepository o,OrderItemRepository oi,KotBatchRepository b,RestaurantBillRepository bills,BillingService billing,RoomRepository rooms,StayRepository stays){tenant=t;categories=c;items=i;this.tables=tables;orders=o;orderItems=oi;batches=b;this.bills=bills;this.billing=billing;this.rooms=rooms;this.stays=stays;}
- public List<MenuCategory> categories(){return categories.findAllByTenantIdOrderBySortOrderAscNameAsc(tenant.tenantId());}@Transactional public MenuCategory addCategory(String name,int order){return categories.save(new MenuCategory(tenant.tenantId(),name,(short)order));}
- public List<MenuItem> items(UUID category,Boolean active){List<MenuItem> found=category==null?items.findAllByTenantIdOrderByName(tenant.tenantId()):items.findAllByTenantIdAndCategoryIdOrderByName(tenant.tenantId(),category);return active==null?found:found.stream().filter(i->i.isActive()==active).toList();}
- @Transactional public MenuItem addItem(UUID cat,String name,java.math.BigDecimal price,UUID tax,String station,boolean veg){categories.findByTenantIdAndId(tenant.tenantId(),cat).orElseThrow(()->new NoSuchElementException("Menu category not found"));return items.save(new MenuItem(tenant.tenantId(),cat,name,price,tax,station,veg));}
- @Transactional public MenuItem updateItem(UUID id,java.math.BigDecimal price,Boolean active){MenuItem item=items.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Menu item not found"));item.update(price,active);return item;}
- public List<DiningTable> tables(){return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());}
- @Transactional public RestaurantOrder openOrder(String type,UUID tableId,UUID stayId){if(tableId!=null){DiningTable table=tables.findByTenantIdAndId(tenant.tenantId(),tableId).orElseThrow(()->new NoSuchElementException("Dining table not found"));if(!"free".equals(table.getStatus()))throw new IllegalStateException("Table is not free");table.setStatus("occupied");}return orders.save(new RestaurantOrder(tenant.tenantId(),type,tableId,stayId,"staff",false,tenant.userId()));}
- public RestaurantOrder getOrder(UUID id){return orders.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Order not found"));}public List<OrderItem> orderItems(UUID id){getOrder(id);return orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(),id);}
- @Transactional public Map<String,Object> addItems(UUID orderId,List<ItemRequest> request){RestaurantOrder order=getOrder(orderId);if(!"open".equals(order.getStatus()))throw new IllegalStateException("Order is not open");UUID t=tenant.tenantId();Map<String,List<OrderItem>> stationItems=new LinkedHashMap<>();for(ItemRequest r:request){MenuItem item=items.findByTenantIdAndId(t,r.menuItemId()).filter(MenuItem::isActive).orElseThrow(()->new NoSuchElementException("Active menu item not found"));OrderItem oi=orderItems.save(new OrderItem(t,orderId,item.getId(),r.quantity(),r.notes(),"sent"));stationItems.computeIfAbsent(item.getStation(),k->new ArrayList<>()).add(oi);}
-  List<KotBatch> savedBatches=new ArrayList<>();List<OrderItem> savedItems=new ArrayList<>();for(var entry:stationItems.entrySet()){short number=(short)(batches.findAllByTenantIdAndOrderIdOrderByBatchNumber(t,orderId).size()+1);KotBatch batch=batches.save(new KotBatch(t,orderId,entry.getKey(),number));savedBatches.add(batch);for(OrderItem item:entry.getValue()){item.send(batch.getId());savedItems.add(item);}}return Map.of("kot_batches",savedBatches,"order_items",savedItems);}
- public List<RestaurantOrder> pendingGuestOrders(){return orders.findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(tenant.tenantId(),"qr_guest","pending");}
- public KotBatch kot(UUID id){return batches.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("KOT batch not found"));}public List<OrderItem> itemsForBatch(UUID id){kot(id);return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(),id);}@Transactional public KotBatch markPrinted(UUID id){KotBatch b=kot(id);b.markPrinted();return b;}
- @Transactional public Map<String,Object> generateBill(UUID orderId){RestaurantOrder order=getOrder(orderId);if(!"open".equals(order.getStatus())){RestaurantBill existing=bills.findByTenantIdAndOrderId(tenant.tenantId(),orderId).orElseThrow(()->new IllegalStateException("Order is not billable"));Invoice invoice=billing.getInvoice(existing.getInvoiceId());return Map.of("restaurant_bill_id",existing.getId(),"invoice_id",invoice.getId(),"total_amount",invoice.getTotalAmount().toPlainString());}List<OrderItem> ordered=orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(),orderId).stream().filter(x->!"cancelled".equals(x.getStatus())).toList();if(ordered.isEmpty())throw new IllegalStateException("Cannot bill an empty order");List<BillingService.LineInput> lines=new ArrayList<>();for(OrderItem oi:ordered){MenuItem menu=items.findByTenantIdAndId(tenant.tenantId(),oi.getMenuItemId()).orElseThrow();lines.add(new BillingService.LineInput(menu.getName(),BigDecimal.valueOf(oi.getQuantity()),menu.getPrice(),menu.getTaxRuleId()));}var result=billing.createInvoice(new BillingService.NewInvoice(null,null,"restaurant",lines));billing.lock(result.invoice().getId());RestaurantBill bill=bills.save(new RestaurantBill(tenant.tenantId(),orderId,result.invoice().getId()));order.markBilled();if(order.getTableId()!=null)tables.findByTenantIdAndId(tenant.tenantId(),order.getTableId()).ifPresent(table->table.setStatus("billed"));return Map.of("restaurant_bill_id",bill.getId(),"invoice_id",result.invoice().getId(),"total_amount",result.totalAmount().toPlainString());}
- @Transactional public String settleBill(UUID billId,String mode,String roomNumber){if(!Set.of("cash","card","upi","account").contains(mode))throw new IllegalArgumentException("Invalid settlement mode");RestaurantBill bill=bills.findByTenantIdAndId(tenant.tenantId(),billId).orElseThrow(()->new NoSuchElementException("Restaurant bill not found"));Invoice invoice=billing.getInvoice(bill.getInvoiceId());if("account".equals(mode)){Room room=rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream().filter(r->r.getRoomNumber().equals(roomNumber)).findFirst().orElseThrow(()->new NoSuchElementException("RoomNotFound"));Stay stay=stays.findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(tenant.tenantId(),room.getId(),"active").orElseThrow(()->new NoSuchElementException("RoomNotFound"));billing.postInvoiceToAccount(stay.getAccountId(),invoice.getId());}else if(billing.amountPaid(invoice.getId()).compareTo(invoice.getTotalAmount())<0){billing.payment(invoice.getId(),mode,invoice.getTotalAmount().subtract(billing.amountPaid(invoice.getId())),null);}bill.settle(mode);return "settled";}
- public record ItemRequest(UUID menuItemId,short quantity,String notes){}
+
+import com.InnovaServe.core.entity.*;
+import com.InnovaServe.core.repository.*;
+import com.InnovaServe.core.service.*;
+import com.InnovaServe.restaurant.entity.*;
+import com.InnovaServe.restaurant.repository.*;
+import com.InnovaServe.stay.entity.*;
+import com.InnovaServe.stay.repository.*;
+import java.math.*;
+import java.util.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class RestaurantService {
+  private final TenantContext tenant;
+  private final MenuCategoryRepository categories;
+  private final MenuItemRepository items;
+  private final DiningTableRepository tables;
+  private final RestaurantOrderRepository orders;
+  private final OrderItemRepository orderItems;
+  private final KotBatchRepository batches;
+  private final RestaurantBillRepository bills;
+  private final BillingService billing;
+  private final RoomRepository rooms;
+  private final StayRepository stays;
+
+  public RestaurantService(
+      TenantContext t,
+      MenuCategoryRepository c,
+      MenuItemRepository i,
+      DiningTableRepository tables,
+      RestaurantOrderRepository o,
+      OrderItemRepository oi,
+      KotBatchRepository b,
+      RestaurantBillRepository bills,
+      BillingService billing,
+      RoomRepository rooms,
+      StayRepository stays) {
+    tenant = t;
+    categories = c;
+    items = i;
+    this.tables = tables;
+    orders = o;
+    orderItems = oi;
+    batches = b;
+    this.bills = bills;
+    this.billing = billing;
+    this.rooms = rooms;
+    this.stays = stays;
+  }
+
+  public List<MenuCategory> categories() {
+    return categories.findAllByTenantIdOrderBySortOrderAscNameAsc(tenant.tenantId());
+  }
+
+  @Transactional
+  public MenuCategory addCategory(String name, int order) {
+    return categories.save(new MenuCategory(tenant.tenantId(), name, (short) order));
+  }
+
+  public List<MenuItem> items(UUID category, Boolean active) {
+    List<MenuItem> found =
+        category == null
+            ? items.findAllByTenantIdOrderByName(tenant.tenantId())
+            : items.findAllByTenantIdAndCategoryIdOrderByName(tenant.tenantId(), category);
+    return active == null ? found : found.stream().filter(i -> i.isActive() == active).toList();
+  }
+
+  @Transactional
+  public MenuItem addItem(
+      UUID cat, String name, java.math.BigDecimal price, UUID tax, String station, boolean veg) {
+    categories
+        .findByTenantIdAndId(tenant.tenantId(), cat)
+        .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
+    return items.save(new MenuItem(tenant.tenantId(), cat, name, price, tax, station, veg));
+  }
+
+  @Transactional
+  public MenuItem updateItem(UUID id, java.math.BigDecimal price, Boolean active) {
+    MenuItem item =
+        items
+            .findByTenantIdAndId(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
+    item.update(price, active);
+    return item;
+  }
+
+  public List<DiningTable> tables() {
+    return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());
+  }
+
+  @Transactional
+  public RestaurantOrder openOrder(String type, UUID tableId, UUID stayId) {
+    if (tableId != null) {
+      DiningTable table =
+          tables
+              .findByTenantIdAndId(tenant.tenantId(), tableId)
+              .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+      if (!"free".equals(table.getStatus())) throw new IllegalStateException("Table is not free");
+      table.setStatus("occupied");
+    }
+    return orders.save(
+        new RestaurantOrder(
+            tenant.tenantId(), type, tableId, stayId, "staff", false, tenant.userId()));
+  }
+
+  public RestaurantOrder getOrder(UUID id) {
+    return orders
+        .findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Order not found"));
+  }
+
+  public List<OrderItem> orderItems(UUID id) {
+    getOrder(id);
+    return orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), id);
+  }
+
+  @Transactional
+  public Map<String, Object> addItems(UUID orderId, List<ItemRequest> request) {
+    RestaurantOrder order = getOrder(orderId);
+    if (!"open".equals(order.getStatus())) throw new IllegalStateException("Order is not open");
+    UUID t = tenant.tenantId();
+    Map<String, List<OrderItem>> stationItems = new LinkedHashMap<>();
+    for (ItemRequest r : request) {
+      MenuItem item =
+          items
+              .findByTenantIdAndId(t, r.menuItemId())
+              .filter(MenuItem::isActive)
+              .orElseThrow(() -> new NoSuchElementException("Active menu item not found"));
+      OrderItem oi =
+          orderItems.save(new OrderItem(t, orderId, item.getId(), r.quantity(), r.notes(), "sent"));
+      stationItems.computeIfAbsent(item.getStation(), k -> new ArrayList<>()).add(oi);
+    }
+    List<KotBatch> savedBatches = new ArrayList<>();
+    List<OrderItem> savedItems = new ArrayList<>();
+    for (var entry : stationItems.entrySet()) {
+      short number =
+          (short) (batches.findAllByTenantIdAndOrderIdOrderByBatchNumber(t, orderId).size() + 1);
+      KotBatch batch = batches.save(new KotBatch(t, orderId, entry.getKey(), number));
+      savedBatches.add(batch);
+      for (OrderItem item : entry.getValue()) {
+        item.send(batch.getId());
+        savedItems.add(item);
+      }
+    }
+    return Map.of("kot_batches", savedBatches, "order_items", savedItems);
+  }
+
+  public List<RestaurantOrder> pendingGuestOrders() {
+    return orders.findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(
+        tenant.tenantId(), "qr_guest", "pending");
+  }
+
+  public KotBatch kot(UUID id) {
+    return batches
+        .findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
+  }
+
+  public List<OrderItem> itemsForBatch(UUID id) {
+    kot(id);
+    return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), id);
+  }
+
+  @Transactional
+  public KotBatch markPrinted(UUID id) {
+    KotBatch b = kot(id);
+    b.markPrinted();
+    return b;
+  }
+
+  @Transactional
+  public Map<String, Object> generateBill(UUID orderId) {
+    RestaurantOrder order = getOrder(orderId);
+    if (!"open".equals(order.getStatus())) {
+      RestaurantBill existing =
+          bills
+              .findByTenantIdAndOrderId(tenant.tenantId(), orderId)
+              .orElseThrow(() -> new IllegalStateException("Order is not billable"));
+      Invoice invoice = billing.getInvoice(existing.getInvoiceId());
+      return Map.of(
+          "restaurant_bill_id",
+          existing.getId(),
+          "invoice_id",
+          invoice.getId(),
+          "total_amount",
+          invoice.getTotalAmount().toPlainString());
+    }
+    List<OrderItem> ordered =
+        orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), orderId).stream()
+            .filter(x -> !"cancelled".equals(x.getStatus()))
+            .toList();
+    if (ordered.isEmpty()) throw new IllegalStateException("Cannot bill an empty order");
+    List<BillingService.LineInput> lines = new ArrayList<>();
+    for (OrderItem oi : ordered) {
+      MenuItem menu =
+          items.findByTenantIdAndId(tenant.tenantId(), oi.getMenuItemId()).orElseThrow();
+      lines.add(
+          new BillingService.LineInput(
+              menu.getName(),
+              BigDecimal.valueOf(oi.getQuantity()),
+              menu.getPrice(),
+              menu.getTaxRuleId()));
+    }
+    var result =
+        billing.createInvoice(new BillingService.NewInvoice(null, null, "restaurant", lines));
+    billing.lock(result.invoice().getId());
+    RestaurantBill bill =
+        bills.save(new RestaurantBill(tenant.tenantId(), orderId, result.invoice().getId()));
+    order.markBilled();
+    if (order.getTableId() != null)
+      tables
+          .findByTenantIdAndId(tenant.tenantId(), order.getTableId())
+          .ifPresent(table -> table.setStatus("billed"));
+    return Map.of(
+        "restaurant_bill_id",
+        bill.getId(),
+        "invoice_id",
+        result.invoice().getId(),
+        "total_amount",
+        result.totalAmount().toPlainString());
+  }
+
+  @Transactional
+  public String settleBill(UUID billId, String mode, String roomNumber) {
+    if (!Set.of("cash", "card", "upi", "account").contains(mode))
+      throw new IllegalArgumentException("Invalid settlement mode");
+    RestaurantBill bill =
+        bills
+            .findByTenantIdAndId(tenant.tenantId(), billId)
+            .orElseThrow(() -> new NoSuchElementException("Restaurant bill not found"));
+    Invoice invoice = billing.getInvoice(bill.getInvoiceId());
+    if ("account".equals(mode)) {
+      Room room =
+          rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream()
+              .filter(r -> r.getRoomNumber().equals(roomNumber))
+              .findFirst()
+              .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
+      Stay stay =
+          stays
+              .findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(
+                  tenant.tenantId(), room.getId(), "active")
+              .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
+      billing.postInvoiceToAccount(stay.getAccountId(), invoice.getId());
+    } else if (billing.amountPaid(invoice.getId()).compareTo(invoice.getTotalAmount()) < 0) {
+      billing.payment(
+          invoice.getId(),
+          mode,
+          invoice.getTotalAmount().subtract(billing.amountPaid(invoice.getId())),
+          null);
+    }
+    bill.settle(mode);
+    return "settled";
+  }
+
+  public record ItemRequest(UUID menuItemId, short quantity, String notes) {}
 }

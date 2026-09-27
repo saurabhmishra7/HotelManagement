@@ -1,16 +1,186 @@
 package com.InnovaServe.expense.service;
-import com.InnovaServe.expense.entity.*;import com.InnovaServe.expense.repository.*;import com.InnovaServe.core.service.*;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;import org.springframework.beans.factory.annotation.Value;import java.util.*;import java.math.*;import java.time.*;
-@Service @Transactional(readOnly=true)public class ExpenseService{
- private final TenantContext tenant;private final ExpenseCategoryRepository categories;private final ExpenseRepository expenses;private final PettyCashRepository petty;private final RecurringExpenseRepository recurring;private final ApprovalService approval;private final AuditService audit;private final BigDecimal approvalLimit;
- public ExpenseService(TenantContext t,ExpenseCategoryRepository c,ExpenseRepository e,PettyCashRepository p,RecurringExpenseRepository r,ApprovalService approval,AuditService audit,@Value("${app.expense.approval-limit:0}")BigDecimal approvalLimit){tenant=t;categories=c;expenses=e;petty=p;recurring=r;this.approval=approval;this.audit=audit;this.approvalLimit=approvalLimit;}
- public List<ExpenseCategory> categories(){return categories.findAllByTenantIdOrderByName(tenant.tenantId());}@Transactional public ExpenseCategory addCategory(String name){return categories.save(new ExpenseCategory(tenant.tenantId(),name));}
- @Transactional public Expense addExpense(NewExpense r){UUID tid=tenant.tenantId();categories.findByTenantIdAndId(tid,r.categoryId()).orElseThrow(()->new NoSuchElementException("Expense category not found"));if(!Set.of("rooms","restaurant","general").contains(r.department()))throw new IllegalArgumentException("Invalid department");if(!Set.of("cash","card","upi","petty_cash").contains(r.paymentMode()))throw new IllegalArgumentException("Invalid payment mode");Expense e=new Expense(tid,r.categoryId(),r.department(),r.vendorName(),r.amount(),r.paymentMode(),r.receiptFileRef(),tenant.userId(),r.expenseDate());if(r.amount().compareTo(approvalLimit)>0)e.markPending();return expenses.save(e);}
- public List<Expense> list(String dept,UUID cat,String status,LocalDate from,LocalDate to){return expenses.search(tenant.tenantId(),dept,cat,status,from,to);}
- @Transactional public Expense approve(UUID id,String pin){approval.require(pin,"expense:approve");Expense e=expenses.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Expense not found"));String before=e.getApprovalStatus();e.approve(tenant.userId());audit.record("approve","expense",id,Map.of("approval_status",before),Map.of("approval_status",e.getApprovalStatus()));return e;}
- public List<Map<String,Object>> report(String group,LocalDate from,LocalDate to){List<Object[]> rows=switch(group){case "department"->expenses.totalByDepartment(tenant.tenantId(),from,to);case "vendor"->expenses.totalByVendor(tenant.tenantId(),from,to);case "category"->expenses.totalByCategory(tenant.tenantId(),from,to);default->throw new IllegalArgumentException("Invalid report group");};return rows.stream().map(r->Map.<String,Object>of("group",r[0],"total",((BigDecimal)r[1]).toPlainString())).toList();}
- @Transactional public PettyCashLedger openLedger(LocalDate date,BigDecimal opening){return petty.save(new PettyCashLedger(tenant.tenantId(),date,opening));}@Transactional public PettyCashLedger topup(UUID id,BigDecimal amount){PettyCashLedger p=petty.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Petty cash ledger not found"));p.topUp(amount);return p;}@Transactional public PettyCashLedger reconcile(UUID id,BigDecimal actual){PettyCashLedger p=petty.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Petty cash ledger not found"));p.reconcile(actual,tenant.userId());return p;}
- @Transactional public RecurringExpense createRecurring(UUID cat,String desc,BigDecimal amount,String freq,LocalDate due){categories.findByTenantIdAndId(tenant.tenantId(),cat).orElseThrow(()->new NoSuchElementException("Expense category not found"));if(!Set.of("weekly","monthly").contains(freq))throw new IllegalArgumentException("Invalid recurring frequency");return recurring.save(new RecurringExpense(tenant.tenantId(),cat,desc,amount,freq,due));}
- public List<RecurringExpense> due(LocalDate date){return recurring.findAllByTenantIdAndNextDueDateLessThanEqualOrderByNextDueDate(tenant.tenantId(),date);}
- @Transactional public RecurringExpense markPaid(UUID id,LocalDate date,boolean createExpense){RecurringExpense r=recurring.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Recurring expense not found"));r.markPaid(date);if(createExpense)expenses.save(new Expense(tenant.tenantId(),r.getCategoryId(),"general",r.getDescription(),r.getAmount(),"cash",null,tenant.userId(),date));return r;}
- public record NewExpense(UUID categoryId,String department,String vendorName,BigDecimal amount,String paymentMode,String receiptFileRef,LocalDate expenseDate){}
+
+import com.InnovaServe.core.service.*;
+import com.InnovaServe.expense.entity.*;
+import com.InnovaServe.expense.repository.*;
+import java.math.*;
+import java.time.*;
+import java.util.*;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class ExpenseService {
+  private final TenantContext tenant;
+  private final ExpenseCategoryRepository categories;
+  private final ExpenseRepository expenses;
+  private final PettyCashRepository petty;
+  private final RecurringExpenseRepository recurring;
+  private final ApprovalService approval;
+  private final AuditService audit;
+  private final BigDecimal approvalLimit;
+
+  public ExpenseService(
+      TenantContext t,
+      ExpenseCategoryRepository c,
+      ExpenseRepository e,
+      PettyCashRepository p,
+      RecurringExpenseRepository r,
+      ApprovalService approval,
+      AuditService audit,
+      @Value("${app.expense.approval-limit:0}") BigDecimal approvalLimit) {
+    tenant = t;
+    categories = c;
+    expenses = e;
+    petty = p;
+    recurring = r;
+    this.approval = approval;
+    this.audit = audit;
+    this.approvalLimit = approvalLimit;
+  }
+
+  public List<ExpenseCategory> categories() {
+    return categories.findAllByTenantIdOrderByName(tenant.tenantId());
+  }
+
+  @Transactional
+  public ExpenseCategory addCategory(String name) {
+    return categories.save(new ExpenseCategory(tenant.tenantId(), name));
+  }
+
+  @Transactional
+  public Expense addExpense(NewExpense r) {
+    UUID tid = tenant.tenantId();
+    categories
+        .findByTenantIdAndId(tid, r.categoryId())
+        .orElseThrow(() -> new NoSuchElementException("Expense category not found"));
+    if (!Set.of("rooms", "restaurant", "general").contains(r.department()))
+      throw new IllegalArgumentException("Invalid department");
+    if (!Set.of("cash", "card", "upi", "petty_cash").contains(r.paymentMode()))
+      throw new IllegalArgumentException("Invalid payment mode");
+    Expense e =
+        new Expense(
+            tid,
+            r.categoryId(),
+            r.department(),
+            r.vendorName(),
+            r.amount(),
+            r.paymentMode(),
+            r.receiptFileRef(),
+            tenant.userId(),
+            r.expenseDate());
+    if (r.amount().compareTo(approvalLimit) > 0) e.markPending();
+    return expenses.save(e);
+  }
+
+  public List<Expense> list(String dept, UUID cat, String status, LocalDate from, LocalDate to) {
+    return expenses.search(tenant.tenantId(), dept, cat, status, from, to);
+  }
+
+  @Transactional
+  public Expense approve(UUID id, String pin) {
+    approval.require(pin, "expense:approve");
+    Expense e =
+        expenses
+            .findByTenantIdAndId(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Expense not found"));
+    String before = e.getApprovalStatus();
+    e.approve(tenant.userId());
+    audit.record(
+        "approve",
+        "expense",
+        id,
+        Map.of("approval_status", before),
+        Map.of("approval_status", e.getApprovalStatus()));
+    return e;
+  }
+
+  public List<Map<String, Object>> report(String group, LocalDate from, LocalDate to) {
+    List<Object[]> rows =
+        switch (group) {
+          case "department" -> expenses.totalByDepartment(tenant.tenantId(), from, to);
+          case "vendor" -> expenses.totalByVendor(tenant.tenantId(), from, to);
+          case "category" -> expenses.totalByCategory(tenant.tenantId(), from, to);
+          default -> throw new IllegalArgumentException("Invalid report group");
+        };
+    return rows.stream()
+        .map(
+            r ->
+                Map.<String, Object>of("group", r[0], "total", ((BigDecimal) r[1]).toPlainString()))
+        .toList();
+  }
+
+  @Transactional
+  public PettyCashLedger openLedger(LocalDate date, BigDecimal opening) {
+    return petty.save(new PettyCashLedger(tenant.tenantId(), date, opening));
+  }
+
+  @Transactional
+  public PettyCashLedger topup(UUID id, BigDecimal amount) {
+    PettyCashLedger p =
+        petty
+            .findByTenantIdAndId(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Petty cash ledger not found"));
+    p.topUp(amount);
+    return p;
+  }
+
+  @Transactional
+  public PettyCashLedger reconcile(UUID id, BigDecimal actual) {
+    PettyCashLedger p =
+        petty
+            .findByTenantIdAndId(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Petty cash ledger not found"));
+    p.reconcile(actual, tenant.userId());
+    return p;
+  }
+
+  @Transactional
+  public RecurringExpense createRecurring(
+      UUID cat, String desc, BigDecimal amount, String freq, LocalDate due) {
+    categories
+        .findByTenantIdAndId(tenant.tenantId(), cat)
+        .orElseThrow(() -> new NoSuchElementException("Expense category not found"));
+    if (!Set.of("weekly", "monthly").contains(freq))
+      throw new IllegalArgumentException("Invalid recurring frequency");
+    return recurring.save(new RecurringExpense(tenant.tenantId(), cat, desc, amount, freq, due));
+  }
+
+  public List<RecurringExpense> due(LocalDate date) {
+    return recurring.findAllByTenantIdAndNextDueDateLessThanEqualOrderByNextDueDate(
+        tenant.tenantId(), date);
+  }
+
+  @Transactional
+  public RecurringExpense markPaid(UUID id, LocalDate date, boolean createExpense) {
+    RecurringExpense r =
+        recurring
+            .findByTenantIdAndId(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Recurring expense not found"));
+    r.markPaid(date);
+    if (createExpense)
+      expenses.save(
+          new Expense(
+              tenant.tenantId(),
+              r.getCategoryId(),
+              "general",
+              r.getDescription(),
+              r.getAmount(),
+              "cash",
+              null,
+              tenant.userId(),
+              date));
+    return r;
+  }
+
+  public record NewExpense(
+      UUID categoryId,
+      String department,
+      String vendorName,
+      BigDecimal amount,
+      String paymentMode,
+      String receiptFileRef,
+      LocalDate expenseDate) {}
 }

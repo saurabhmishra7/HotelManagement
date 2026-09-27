@@ -1,19 +1,225 @@
 package com.InnovaServe.stay.service;
-import com.InnovaServe.stay.entity.*;import com.InnovaServe.stay.repository.*;import com.InnovaServe.core.entity.*;import com.InnovaServe.core.repository.*;import com.InnovaServe.core.service.*;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;import java.util.*;import java.math.*;import java.time.*;
-@Service @Transactional(readOnly=true) public class StayService{
- private final RoomRepository rooms;private final StayRepository stays;private final StayChargeRepository charges;private final FormCSubmissionRepository forms;private final AccountRepository accounts;private final CustomerService customers;private final CustomerRepository customerRepository;private final TenantContext tenant;private final BillingService billing;
- public StayService(RoomRepository rooms,StayRepository stays,StayChargeRepository charges,FormCSubmissionRepository forms,AccountRepository accounts,CustomerService customers,CustomerRepository customerRepository,TenantContext tenant,BillingService billing){this.rooms=rooms;this.stays=stays;this.charges=charges;this.forms=forms;this.accounts=accounts;this.customers=customers;this.customerRepository=customerRepository;this.tenant=tenant;this.billing=billing;}
- public List<Room> rooms(){return rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId());}public Room room(UUID id){return rooms.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Room not found"));}
- @Transactional public Room setRoomStatus(UUID id,String status){Room r=room(id);r.setStatus(status);return r;}
- @Transactional public Stay checkIn(CheckIn r){UUID tid=tenant.tenantId();Room room=rooms.lockByTenantIdAndId(tid,r.roomId()).orElseThrow(()->new NoSuchElementException("Room not found"));if(!Set.of("vacant","clean").contains(room.getStatus()))throw new IllegalStateException("RoomNotAvailable");CustomerService.CustomerResult c=customers.createOrUpdate(r.customer().name(),r.customer().phone(),r.customer().idProofType(),r.customer().idProofNumber(),r.customer().address());UUID sid=UUID.randomUUID(),aid=UUID.randomUUID();Account account=accounts.save(new Account(aid,tid,"stay","stay",sid));Stay stay=stays.save(new Stay(sid,tid,room.getId(),c.customer().getId(),account.getId(),r.guestCount(),r.isForeignGuest(),r.plan()==null?"EP":r.plan(),r.tariff(),r.expectedCheckOutAt(),r.advancePaid()==null?BigDecimal.ZERO:r.advancePaid()));room.setStatus("occupied");if(r.isForeignGuest())forms.save(new FormCSubmission(tid,sid));return stay;}
- public Stay getStay(UUID id){return stays.findByTenantIdAndId(tenant.tenantId(),id).orElseThrow(()->new NoSuchElementException("Stay not found"));}
- public Map<String,Object> activeStay(String roomNumber){Room room=rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream().filter(x->x.getRoomNumber().equals(roomNumber)).findFirst().orElse(null);if(room==null)return null;Stay s=stays.findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(tenant.tenantId(),room.getId(),"active").orElse(null);if(s==null)return null;String guest=customerRepository.findByTenantIdAndId(tenant.tenantId(),s.getCustomerId()).map(com.InnovaServe.core.entity.Customer::getName).orElse("");return Map.of("stay_id",s.getId(),"account_id",s.getAccountId(),"guest_name",guest);}
- @Transactional public StayCharge addCharge(UUID stayId,String description,BigDecimal amount){Stay s=getStay(stayId);if(!"active".equals(s.getStatus()))throw new IllegalStateException("Stay is not active");return charges.save(new StayCharge(tenant.tenantId(),stayId,description,amount,tenant.userId()));}
- public List<StayCharge> charges(UUID id){getStay(id);return charges.findAllByTenantIdAndStayId(tenant.tenantId(),id);}
- @Transactional public Map<String,Object> checkout(UUID stayId){Stay stay=getStay(stayId);if(!"active".equals(stay.getStatus()))throw new IllegalStateException("Stay is not active");List<com.InnovaServe.core.entity.Invoice> existing=billing.invoicesForAccount(stay.getAccountId());if(existing.stream().noneMatch(i->"stay".equals(i.getSourceModule()))){long nights=Math.max(1,java.time.temporal.ChronoUnit.DAYS.between(stay.getCheckInAt().toLocalDate(),LocalDate.now()));List<BillingService.LineInput> lines=new ArrayList<>();UUID taxId=billing.taxes("room").stream().findFirst().map(com.InnovaServe.core.entity.TaxRule::getId).orElse(null);lines.add(new BillingService.LineInput("Room tariff ("+nights+" nights)",BigDecimal.valueOf(nights),stay.getTariff(),taxId));for(StayCharge c:charges.findAllByTenantIdAndStayId(tenant.tenantId(),stayId))lines.add(new BillingService.LineInput(c.getDescription(),BigDecimal.ONE,c.getAmount(),taxId));var invoice=billing.createInvoice(new BillingService.NewInvoice(stay.getAccountId(),stay.getCustomerId(),"stay",lines));billing.lock(invoice.invoice().getId());}
-  List<com.InnovaServe.core.entity.Invoice> all=billing.invoicesForAccount(stay.getAccountId());BigDecimal due=BigDecimal.ZERO;for(var invoice:all){BigDecimal paid=billing.payments(invoice.getId()).stream().map(com.InnovaServe.core.entity.Payment::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add);due=due.add(invoice.getTotalAmount().subtract(paid).max(BigDecimal.ZERO));}return Map.of("invoices",all,"total_due",due.toPlainString());}
- @Transactional public void confirmCheckout(UUID stayId){Stay stay=getStay(stayId);billing.closeAccount(stay.getAccountId());stay.checkout();rooms.findByTenantIdAndId(tenant.tenantId(),stay.getRoomId()).orElseThrow().setStatus("dirty");}
- @Transactional public FormCSubmission submitFormC(UUID stayId,String reference){getStay(stayId);FormCSubmission f=forms.findByTenantIdAndStayId(tenant.tenantId(),stayId).orElseThrow(()->new NoSuchElementException("Form C submission not found"));f.submit(reference);return f;}
- public FormCSubmission formC(UUID stayId){getStay(stayId);return forms.findByTenantIdAndStayId(tenant.tenantId(),stayId).orElseThrow(()->new NoSuchElementException("Form C submission not found"));}
- public record Guest(String name,String phone,String idProofType,String idProofNumber,String address){}public record CheckIn(UUID roomId,Guest customer,short guestCount,String plan,BigDecimal tariff,BigDecimal advancePaid,boolean isForeignGuest,LocalDateTime expectedCheckOutAt){}
+
+import com.InnovaServe.core.entity.*;
+import com.InnovaServe.core.repository.*;
+import com.InnovaServe.core.service.*;
+import com.InnovaServe.stay.entity.*;
+import com.InnovaServe.stay.repository.*;
+import java.math.*;
+import java.time.*;
+import java.util.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+@Transactional(readOnly = true)
+public class StayService {
+  private final RoomRepository rooms;
+  private final StayRepository stays;
+  private final StayChargeRepository charges;
+  private final FormCSubmissionRepository forms;
+  private final AccountRepository accounts;
+  private final CustomerService customers;
+  private final CustomerRepository customerRepository;
+  private final TenantContext tenant;
+  private final BillingService billing;
+
+  public StayService(
+      RoomRepository rooms,
+      StayRepository stays,
+      StayChargeRepository charges,
+      FormCSubmissionRepository forms,
+      AccountRepository accounts,
+      CustomerService customers,
+      CustomerRepository customerRepository,
+      TenantContext tenant,
+      BillingService billing) {
+    this.rooms = rooms;
+    this.stays = stays;
+    this.charges = charges;
+    this.forms = forms;
+    this.accounts = accounts;
+    this.customers = customers;
+    this.customerRepository = customerRepository;
+    this.tenant = tenant;
+    this.billing = billing;
+  }
+
+  public List<Room> rooms() {
+    return rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId());
+  }
+
+  public Room room(UUID id) {
+    return rooms
+        .findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Room not found"));
+  }
+
+  @Transactional
+  public Room setRoomStatus(UUID id, String status) {
+    Room r = room(id);
+    r.setStatus(status);
+    return r;
+  }
+
+  @Transactional
+  public Stay checkIn(CheckIn r) {
+    UUID tid = tenant.tenantId();
+    Room room =
+        rooms
+            .lockByTenantIdAndId(tid, r.roomId())
+            .orElseThrow(() -> new NoSuchElementException("Room not found"));
+    if (!Set.of("vacant", "clean").contains(room.getStatus()))
+      throw new IllegalStateException("RoomNotAvailable");
+    CustomerService.CustomerResult c =
+        customers.createOrUpdate(
+            r.customer().name(),
+            r.customer().phone(),
+            r.customer().idProofType(),
+            r.customer().idProofNumber(),
+            r.customer().address());
+    UUID sid = UUID.randomUUID(), aid = UUID.randomUUID();
+    Account account = accounts.save(new Account(aid, tid, "stay", "stay", sid));
+    Stay stay =
+        stays.save(
+            new Stay(
+                sid,
+                tid,
+                room.getId(),
+                c.customer().getId(),
+                account.getId(),
+                r.guestCount(),
+                r.isForeignGuest(),
+                r.plan() == null ? "EP" : r.plan(),
+                r.tariff(),
+                r.expectedCheckOutAt(),
+                r.advancePaid() == null ? BigDecimal.ZERO : r.advancePaid()));
+    room.setStatus("occupied");
+    if (r.isForeignGuest()) forms.save(new FormCSubmission(tid, sid));
+    return stay;
+  }
+
+  public Stay getStay(UUID id) {
+    return stays
+        .findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+  }
+
+  public Map<String, Object> activeStay(String roomNumber) {
+    Room room =
+        rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream()
+            .filter(x -> x.getRoomNumber().equals(roomNumber))
+            .findFirst()
+            .orElse(null);
+    if (room == null) return null;
+    Stay s =
+        stays
+            .findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(
+                tenant.tenantId(), room.getId(), "active")
+            .orElse(null);
+    if (s == null) return null;
+    String guest =
+        customerRepository
+            .findByTenantIdAndId(tenant.tenantId(), s.getCustomerId())
+            .map(com.InnovaServe.core.entity.Customer::getName)
+            .orElse("");
+    return Map.of("stay_id", s.getId(), "account_id", s.getAccountId(), "guest_name", guest);
+  }
+
+  @Transactional
+  public StayCharge addCharge(UUID stayId, String description, BigDecimal amount) {
+    Stay s = getStay(stayId);
+    if (!"active".equals(s.getStatus())) throw new IllegalStateException("Stay is not active");
+    return charges.save(
+        new StayCharge(tenant.tenantId(), stayId, description, amount, tenant.userId()));
+  }
+
+  public List<StayCharge> charges(UUID id) {
+    getStay(id);
+    return charges.findAllByTenantIdAndStayId(tenant.tenantId(), id);
+  }
+
+  @Transactional
+  public Map<String, Object> checkout(UUID stayId) {
+    Stay stay = getStay(stayId);
+    if (!"active".equals(stay.getStatus())) throw new IllegalStateException("Stay is not active");
+    List<com.InnovaServe.core.entity.Invoice> existing =
+        billing.invoicesForAccount(stay.getAccountId());
+    if (existing.stream().noneMatch(i -> "stay".equals(i.getSourceModule()))) {
+      long nights =
+          Math.max(
+              1,
+              java.time.temporal.ChronoUnit.DAYS.between(
+                  stay.getCheckInAt().toLocalDate(), LocalDate.now()));
+      List<BillingService.LineInput> lines = new ArrayList<>();
+      UUID taxId =
+          billing.taxes("room").stream()
+              .findFirst()
+              .map(com.InnovaServe.core.entity.TaxRule::getId)
+              .orElse(null);
+      lines.add(
+          new BillingService.LineInput(
+              "Room tariff (" + nights + " nights)",
+              BigDecimal.valueOf(nights),
+              stay.getTariff(),
+              taxId));
+      for (StayCharge c : charges.findAllByTenantIdAndStayId(tenant.tenantId(), stayId))
+        lines.add(
+            new BillingService.LineInput(c.getDescription(), BigDecimal.ONE, c.getAmount(), taxId));
+      var invoice =
+          billing.createInvoice(
+              new BillingService.NewInvoice(
+                  stay.getAccountId(), stay.getCustomerId(), "stay", lines));
+      billing.lock(invoice.invoice().getId());
+    }
+    List<com.InnovaServe.core.entity.Invoice> all = billing.invoicesForAccount(stay.getAccountId());
+    BigDecimal due = BigDecimal.ZERO;
+    for (var invoice : all) {
+      BigDecimal paid =
+          billing.payments(invoice.getId()).stream()
+              .map(com.InnovaServe.core.entity.Payment::getAmount)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+      due = due.add(invoice.getTotalAmount().subtract(paid).max(BigDecimal.ZERO));
+    }
+    return Map.of("invoices", all, "total_due", due.toPlainString());
+  }
+
+  @Transactional
+  public void confirmCheckout(UUID stayId) {
+    Stay stay = getStay(stayId);
+    billing.closeAccount(stay.getAccountId());
+    stay.checkout();
+    rooms.findByTenantIdAndId(tenant.tenantId(), stay.getRoomId()).orElseThrow().setStatus("dirty");
+  }
+
+  @Transactional
+  public FormCSubmission submitFormC(UUID stayId, String reference) {
+    getStay(stayId);
+    FormCSubmission f =
+        forms
+            .findByTenantIdAndStayId(tenant.tenantId(), stayId)
+            .orElseThrow(() -> new NoSuchElementException("Form C submission not found"));
+    f.submit(reference);
+    return f;
+  }
+
+  public FormCSubmission formC(UUID stayId) {
+    getStay(stayId);
+    return forms
+        .findByTenantIdAndStayId(tenant.tenantId(), stayId)
+        .orElseThrow(() -> new NoSuchElementException("Form C submission not found"));
+  }
+
+  public record Guest(
+      String name, String phone, String idProofType, String idProofNumber, String address) {}
+
+  public record CheckIn(
+      UUID roomId,
+      Guest customer,
+      short guestCount,
+      String plan,
+      BigDecimal tariff,
+      BigDecimal advancePaid,
+      boolean isForeignGuest,
+      LocalDateTime expectedCheckOutAt) {}
 }

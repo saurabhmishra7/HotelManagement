@@ -7,48 +7,52 @@ import java.util.UUID;
 @Entity
 @Table(name = "account", schema = "core")
 public class Account extends TenantEntity {
-    @Column(name = "opened_by_module", nullable = false, length = 10)
-    private String openedByModule;
-    @Column(name = "linked_entity_type", length = 30)
-    private String linkedEntityType;
-    @Column(name = "linked_entity_id")
-    private UUID linkedEntityId;
-    @Column(nullable = false, length = 10)
-    private String status;
-    @Column(name = "opened_at", insertable = false, updatable = false)
-    private LocalDateTime openedAt;
-    @Column(name = "closed_at")
-    private LocalDateTime closedAt;
+  @Column(name = "opened_by_module", nullable = false, length = 10)
+  private String openedByModule;
 
-    protected Account() {
-    }
+  @Column(name = "linked_entity_type", length = 30)
+  private String linkedEntityType;
 
-    public Account(UUID tenant, String module, String entityType, UUID entityId) {
-        super(tenant);
-        openedByModule = module;
-        linkedEntityType = entityType;
-        linkedEntityId = entityId;
-        status = "open";
-    }
+  @Column(name = "linked_entity_id")
+  private UUID linkedEntityId;
 
-    public Account(UUID id, UUID tenant, String module, String entityType, UUID entityId) {
-        super(id, tenant);
-        openedByModule = module;
-        linkedEntityType = entityType;
-        linkedEntityId = entityId;
-        status = "open";
-    }
+  @Column(nullable = false, length = 10)
+  private String status;
 
-    public String getStatus() {
-        return status;
-    }
+  @Column(name = "opened_at", insertable = false, updatable = false)
+  private LocalDateTime openedAt;
 
-    public UUID getLinkedEntityId() {
-        return linkedEntityId;
-    }
+  @Column(name = "closed_at")
+  private LocalDateTime closedAt;
 
-    public void close() {
-        status = "closed";
-        closedAt = LocalDateTime.now();
-    }
+  protected Account() {}
+
+  public Account(UUID tenant, String module, String entityType, UUID entityId) {
+    super(tenant);
+    openedByModule = module;
+    linkedEntityType = entityType;
+    linkedEntityId = entityId;
+    status = "open";
+  }
+
+  public Account(UUID id, UUID tenant, String module, String entityType, UUID entityId) {
+    super(id, tenant);
+    openedByModule = module;
+    linkedEntityType = entityType;
+    linkedEntityId = entityId;
+    status = "open";
+  }
+
+  public String getStatus() {
+    return status;
+  }
+
+  public UUID getLinkedEntityId() {
+    return linkedEntityId;
+  }
+
+  public void close() {
+    status = "closed";
+    closedAt = LocalDateTime.now();
+  }
 }

@@ -1,3 +1,48 @@
 package com.InnovaServe.stay.entity;
-import com.InnovaServe.core.entity.TenantEntity;import jakarta.persistence.*;import java.math.BigDecimal;import java.time.LocalDateTime;import java.util.UUID;
-@Entity @Table(name="stay_charge",schema="stay")public class StayCharge extends TenantEntity{@Column(name="stay_id",nullable=false)private UUID stayId;@Column(nullable=false,length=200)private String description;@Column(nullable=false,precision=10,scale=2)private BigDecimal amount;@Column(name="added_by",nullable=false)private UUID addedBy;@Column(name="created_at",insertable=false,updatable=false)private LocalDateTime createdAt;protected StayCharge(){}public StayCharge(UUID t,UUID stay,String description,BigDecimal amount,UUID user){super(t);stayId=stay;this.description=description;this.amount=amount;addedBy=user;}public UUID getStayId(){return stayId;}public String getDescription(){return description;}public BigDecimal getAmount(){return amount;}}
+
+import com.InnovaServe.core.entity.TenantEntity;
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "stay_charge", schema = "stay")
+public class StayCharge extends TenantEntity {
+  @Column(name = "stay_id", nullable = false)
+  private UUID stayId;
+
+  @Column(nullable = false, length = 200)
+  private String description;
+
+  @Column(nullable = false, precision = 10, scale = 2)
+  private BigDecimal amount;
+
+  @Column(name = "added_by", nullable = false)
+  private UUID addedBy;
+
+  @Column(name = "created_at", insertable = false, updatable = false)
+  private LocalDateTime createdAt;
+
+  protected StayCharge() {}
+
+  public StayCharge(UUID t, UUID stay, String description, BigDecimal amount, UUID user) {
+    super(t);
+    stayId = stay;
+    this.description = description;
+    this.amount = amount;
+    addedBy = user;
+  }
+
+  public UUID getStayId() {
+    return stayId;
+  }
+
+  public String getDescription() {
+    return description;
+  }
+
+  public BigDecimal getAmount() {
+    return amount;
+  }
+}

@@ -1,3 +1,54 @@
 package com.InnovaServe.stay.entity;
-import com.InnovaServe.core.entity.TenantEntity;import jakarta.persistence.*;import java.time.LocalDateTime;import java.util.UUID;
-@Entity @Table(name="form_c_submission",schema="stay",uniqueConstraints=@UniqueConstraint(name="uq_formc_stay",columnNames="stay_id"))public class FormCSubmission extends TenantEntity{@Column(name="stay_id",nullable=false)private UUID stayId;@Column(name="submitted_at")private LocalDateTime submittedAt;@Column(nullable=false,length=10)private String status="pending";@Column(name="reference_number",length=50)private String referenceNumber;protected FormCSubmission(){}public FormCSubmission(UUID t,UUID stay){super(t);stayId=stay;}public void submit(String ref){status="submitted";submittedAt=LocalDateTime.now();referenceNumber=ref;}public UUID getStayId(){return stayId;}public String getStatus(){return status;}public String getReferenceNumber(){return referenceNumber;}public LocalDateTime getSubmittedAt(){return submittedAt;}}
+
+import com.InnovaServe.core.entity.TenantEntity;
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(
+    name = "form_c_submission",
+    schema = "stay",
+    uniqueConstraints = @UniqueConstraint(name = "uq_formc_stay", columnNames = "stay_id"))
+public class FormCSubmission extends TenantEntity {
+  @Column(name = "stay_id", nullable = false)
+  private UUID stayId;
+
+  @Column(name = "submitted_at")
+  private LocalDateTime submittedAt;
+
+  @Column(nullable = false, length = 10)
+  private String status = "pending";
+
+  @Column(name = "reference_number", length = 50)
+  private String referenceNumber;
+
+  protected FormCSubmission() {}
+
+  public FormCSubmission(UUID t, UUID stay) {
+    super(t);
+    stayId = stay;
+  }
+
+  public void submit(String ref) {
+    status = "submitted";
+    submittedAt = LocalDateTime.now();
+    referenceNumber = ref;
+  }
+
+  public UUID getStayId() {
+    return stayId;
+  }
+
+  public String getStatus() {
+    return status;
+  }
+
+  public String getReferenceNumber() {
+    return referenceNumber;
+  }
+
+  public LocalDateTime getSubmittedAt() {
+    return submittedAt;
+  }
+}

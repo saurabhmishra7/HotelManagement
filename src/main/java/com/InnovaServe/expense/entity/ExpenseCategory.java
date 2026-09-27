@@ -1,2 +1,23 @@
-package com.InnovaServe.expense.entity;import com.InnovaServe.core.entity.TenantEntity;import jakarta.persistence.*;import java.util.UUID;
-@Entity @Table(name="expense_category",schema="expense")public class ExpenseCategory extends TenantEntity{@Column(nullable=false,length=100)private String name;protected ExpenseCategory(){}public ExpenseCategory(UUID tenant,String name){super(tenant);this.name=name;}public String getName(){return name;}}
+package com.InnovaServe.expense.entity;
+
+import com.InnovaServe.core.entity.TenantEntity;
+import jakarta.persistence.*;
+import java.util.UUID;
+
+@Entity
+@Table(name = "expense_category", schema = "expense")
+public class ExpenseCategory extends TenantEntity {
+  @Column(nullable = false, length = 100)
+  private String name;
+
+  protected ExpenseCategory() {}
+
+  public ExpenseCategory(UUID tenant, String name) {
+    super(tenant);
+    this.name = name;
+  }
+
+  public String getName() {
+    return name;
+  }
+}
