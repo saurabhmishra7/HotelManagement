@@ -1,4 +1,4 @@
-package com.InnovaServe.api;
+package com.InnovaServe.expense.controller;
 
 import com.InnovaServe.expense.entity.*;
 import com.InnovaServe.expense.service.ExpenseService;
@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,16 +19,19 @@ public class ExpenseController {
   }
 
   @GetMapping("/expense-categories")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_READ')")
   public List<ExpenseCategory> categories() {
     return service.categories();
   }
 
   @PostMapping("/expense-categories")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_CREATE')")
   public ExpenseCategory category(@RequestBody NameRequest r) {
     return service.addCategory(r.name());
   }
 
   @PostMapping("/expenses")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_CREATE')")
   public Map<String, Object> expense(@RequestBody ExpenseRequest r) {
     Expense e =
         service.addExpense(
@@ -43,6 +47,7 @@ public class ExpenseController {
   }
 
   @GetMapping("/expenses")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_READ')")
   public List<Expense> expenses(
       @RequestParam(required = false) String department,
       @RequestParam(name = "category_id", required = false) UUID category,
@@ -53,11 +58,13 @@ public class ExpenseController {
   }
 
   @PostMapping("/expenses/{id}/approve")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_APPROVE')")
   public Map<String, Object> approve(@PathVariable UUID id, @RequestBody ApproveRequest r) {
     return Map.of("approval_status", service.approve(id, r.pin()).getApprovalStatus());
   }
 
   @GetMapping("/expenses/report")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_REPORT')")
   public List<Map<String, Object>> report(
       @RequestParam(name = "group_by") String group,
       @RequestParam(required = false) LocalDate from,
@@ -66,32 +73,38 @@ public class ExpenseController {
   }
 
   @PostMapping("/petty-cash/open")
+  @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
   public PettyCashLedger open(@RequestBody PettyOpen r) {
     return service.openLedger(r.shiftDate(), r.openingFloat());
   }
 
   @PostMapping("/petty-cash/{id}/top-up")
+  @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
   public PettyCashLedger topup(@PathVariable UUID id, @RequestBody AmountRequest r) {
     return service.topup(id, r.amount());
   }
 
   @PostMapping("/petty-cash/{id}/reconcile")
+  @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
   public PettyCashLedger reconcile(@PathVariable UUID id, @RequestBody AmountRequest r) {
     return service.reconcile(id, r.amount());
   }
 
   @PostMapping("/recurring-expenses")
+  @PreAuthorize("hasAuthority('PERM_RECURRING_EXPENSE_MANAGE')")
   public RecurringExpense recurring(@RequestBody RecurringRequest r) {
     return service.createRecurring(
         r.categoryId(), r.description(), r.amount(), r.frequency(), r.nextDueDate());
   }
 
   @GetMapping("/recurring-expenses/due")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_READ')")
   public List<RecurringExpense> due(@RequestParam(required = false) LocalDate date) {
     return service.due(date == null ? LocalDate.now() : date);
   }
 
   @PostMapping("/recurring-expenses/{id}/mark-paid")
+  @PreAuthorize("hasAuthority('PERM_RECURRING_EXPENSE_MANAGE')")
   public Map<String, Object> markPaid(@PathVariable UUID id, @RequestBody MarkPaid r) {
     return Map.of(
         "next_due_date",

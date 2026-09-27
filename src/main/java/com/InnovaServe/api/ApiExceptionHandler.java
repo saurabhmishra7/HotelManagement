@@ -2,6 +2,7 @@ package com.InnovaServe.api;
 
 import java.util.*;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,6 +66,12 @@ public class ApiExceptionHandler {
                 ex.getMessage() == null ? "Permission denied" : ex.getMessage(),
                 "details",
                 Map.of()));
+  }
+
+  @ExceptionHandler(AccessDeniedException.class)
+  public ResponseEntity<?> accessDenied(AccessDeniedException ex) {
+    return ResponseEntity.status(403)
+        .body(Map.of("error", "Forbidden", "message", ex.getMessage(), "details", Map.of()));
   }
 
   @ExceptionHandler(DataIntegrityViolationException.class)

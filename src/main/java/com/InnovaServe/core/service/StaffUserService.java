@@ -1,6 +1,7 @@
 package com.InnovaServe.core.service;
 
 import com.InnovaServe.core.entity.StaffUser;
+import com.InnovaServe.core.repository.StaffRoleRepository;
 import com.InnovaServe.core.repository.StaffUserRepository;
 import java.util.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,11 +14,14 @@ public class StaffUserService {
   private final StaffUserRepository users;
   private final TenantContext tenant;
   private final PasswordEncoder encoder;
+  private final StaffRoleRepository roles;
 
-  public StaffUserService(StaffUserRepository u, TenantContext t, PasswordEncoder e) {
+  public StaffUserService(
+      StaffUserRepository u, TenantContext t, PasswordEncoder e, StaffRoleRepository roles) {
     users = u;
     tenant = t;
     encoder = e;
+    this.roles = roles;
   }
 
   public List<StaffUser> list() {
@@ -30,6 +34,8 @@ public class StaffUserService {
     UUID tid = tenant.tenantId();
     if (users.existsByTenantIdAndPhone(tid, phone))
       throw new IllegalArgumentException("PhoneAlreadyExists");
+    if (role != null && roles.findByTenantIdAndId(tid, role).isEmpty())
+      throw new NoSuchElementException("Role not found");
     return users.save(
         new StaffUser(
             tid,
@@ -43,6 +49,8 @@ public class StaffUserService {
 
   @Transactional
   public StaffUser update(UUID id, String name, UUID role, Boolean active) {
+    if (role != null && roles.findByTenantIdAndId(tenant.tenantId(), role).isEmpty())
+      throw new NoSuchElementException("Role not found");
     StaffUser u =
         users
             .findByTenantIdAndId(tenant.tenantId(), id)

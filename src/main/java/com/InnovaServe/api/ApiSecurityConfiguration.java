@@ -1,14 +1,22 @@
 package com.InnovaServe.api;
 
+import com.InnovaServe.core.entity.StaffRole;
+import com.InnovaServe.core.entity.StaffUser;
+import com.InnovaServe.core.repository.StaffRoleRepository;
+import com.InnovaServe.core.repository.StaffUserRepository;
+import com.InnovaServe.core.security.Permission;
 import com.InnovaServe.core.service.TokenService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import java.io.IOException;
 import java.util.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.context.annotation.*;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.*;
@@ -17,6 +25,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Configuration
+@EnableMethodSecurity
 public class ApiSecurityConfiguration {
   @Bean
   PasswordEncoder passwordEncoder() {
@@ -28,7 +37,35 @@ public class ApiSecurityConfiguration {
     return http.csrf(c -> c.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            a -> a.requestMatchers("/api/v1/auth/login").permitAll().anyRequest().authenticated())
+            a ->
+                a.requestMatchers("/api/v1/auth/login").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/tenants")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
+        .exceptionHandling(
+            errors ->
+                errors
+                    .authenticationEntryPoint(
+                        (request, response, exception) -> {
+                          response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                          response.setContentType("application/json");
+                          response
+                              .getWriter()
+                              .write(
+                                  "{\"error\":\"Unauthorized\",\"message\":\"Authentication is"
+                                      + " required\",\"details\":{}}");
+                        })
+                    .accessDeniedHandler(
+                        (request, response, exception) -> {
+                          response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                          response.setContentType("application/json");
+                          response
+                              .getWriter()
+                              .write(
+                                  "{\"error\":\"Forbidden\",\"message\":\"You do not have"
+                                      + " permission for this action\",\"details\":{}}");
+                        }))
         .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
         .build();
   }
@@ -37,9 +74,13 @@ public class ApiSecurityConfiguration {
 @Component
 class BearerTokenFilter extends OncePerRequestFilter {
   private final TokenService tokens;
+  private final StaffUserRepository users;
+  private final StaffRoleRepository roles;
 
-  BearerTokenFilter(TokenService tokens) {
+  BearerTokenFilter(TokenService tokens, StaffUserRepository users, StaffRoleRepository roles) {
     this.tokens = tokens;
+    this.users = users;
+    this.roles = roles;
   }
 
   @Override
@@ -50,7 +91,31 @@ class BearerTokenFilter extends OncePerRequestFilter {
     if (header != null && header.startsWith("Bearer ")) {
       Map<?, ?> claims = tokens.verify(header.substring(7));
       if (claims != null) {
-        var auth = new UsernamePasswordAuthenticationToken(claims, null, List.of());
+        UUID tenantId = UUID.fromString(claims.get("tenant_id").toString());
+        UUID userId = UUID.fromString(claims.get("user_id").toString());
+        StaffUser user = users.findByTenantIdAndId(tenantId, userId).orElse(null);
+        if (user == null || !user.isActive()) {
+          chain.doFilter(request, response);
+          return;
+        }
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        StaffRole role =
+            user.getRoleId() == null
+                ? null
+                : roles.findByTenantIdAndId(tenantId, user.getRoleId()).orElse(null);
+        if (role != null && role.getPermissions() != null) {
+          Collection<?> permissions = role.getPermissions();
+          for (Object permission : permissions) {
+            try {
+              authorities.add(
+                  new SimpleGrantedAuthority(
+                      "PERM_" + Permission.valueOf(permission.toString()).name()));
+            } catch (IllegalArgumentException ignored) {
+              // Unknown permissions in an older token are ignored.
+            }
+          }
+        }
+        var auth = new UsernamePasswordAuthenticationToken(claims, null, authorities);
         org.springframework.security.core.context.SecurityContextHolder.getContext()
             .setAuthentication(auth);
       }

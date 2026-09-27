@@ -1,8 +1,12 @@
-package com.InnovaServe.api;
+package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.StaffRole;
+import com.InnovaServe.core.security.Permission;
+import com.InnovaServe.core.security.RoleType;
 import com.InnovaServe.core.service.StaffRoleService;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -15,15 +19,16 @@ public class StaffRoleController {
   }
 
   @GetMapping
+  @PreAuthorize("hasAuthority('PERM_ROLE_READ')")
   public List<StaffRole> list() {
     return service.list();
   }
 
   @PostMapping
+  @PreAuthorize("hasAuthority('PERM_ROLE_MANAGE')")
   public StaffRole create(@RequestBody RoleRequest request) {
-    return service.create(
-        request.name(), request.permissions() == null ? List.of() : request.permissions());
+    return service.create(request.role(), request.permissions());
   }
 
-  public record RoleRequest(String name, List<String> permissions) {}
+  public record RoleRequest(@JsonProperty("name") RoleType role, List<Permission> permissions) {}
 }

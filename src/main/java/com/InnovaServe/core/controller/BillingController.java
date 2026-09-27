@@ -1,4 +1,4 @@
-package com.InnovaServe.api;
+package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.service.BillingService;
@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
 import java.time.LocalDate;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,12 +19,14 @@ public class BillingController {
   }
 
   @GetMapping("/tax-rules")
+  @PreAuthorize("hasAuthority('PERM_TAX_READ')")
   public List<TaxRule> taxRules(
       @RequestParam(name = "applies_to", required = false) String applies) {
     return service.taxes(applies);
   }
 
   @PostMapping("/tax-rules")
+  @PreAuthorize("hasAuthority('PERM_TAX_MANAGE')")
   public TaxRule addTax(@RequestBody TaxRequest r) {
     return service.addTax(
         r.name(),
@@ -34,40 +37,47 @@ public class BillingController {
   }
 
   @PostMapping("/tax-rules/{id}/supersede")
+  @PreAuthorize("hasAuthority('PERM_TAX_MANAGE')")
   public TaxRule supersede(@PathVariable UUID id, @RequestBody SupersedeRequest r) {
     return service.supersede(id, r.effectiveTo());
   }
 
   @PostMapping("/accounts")
+  @PreAuthorize("hasAuthority('PERM_ACCOUNT_MANAGE')")
   public Map<String, Object> openAccount(@RequestBody AccountRequest r) {
     Account a = service.openAccount(r.openedByModule(), r.linkedEntityType(), r.linkedEntityId());
     return Map.of("account_id", a.getId(), "status", a.getStatus());
   }
 
   @GetMapping("/accounts/{id}")
+  @PreAuthorize("hasAuthority('PERM_ACCOUNT_READ')")
   public Account account(@PathVariable UUID id) {
     return service.account(id);
   }
 
   @GetMapping("/accounts/{id}/invoices")
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
   public List<?> accountInvoices(@PathVariable UUID id) {
     service.account(id);
     return service.invoicesForAccount(id);
   }
 
   @PostMapping("/accounts/{id}/charges")
+  @PreAuthorize("hasAuthority('PERM_ACCOUNT_MANAGE')")
   public Map<String, Boolean> charge(@PathVariable UUID id, @RequestBody InvoiceRef r) {
     service.postInvoiceToAccount(id, r.invoiceId());
     return Map.of("success", true);
   }
 
   @PostMapping("/accounts/{id}/close")
+  @PreAuthorize("hasAuthority('PERM_ACCOUNT_MANAGE')")
   public Map<String, Boolean> closeAccount(@PathVariable UUID id) {
     service.closeAccount(id);
     return Map.of("success", true);
   }
 
   @PostMapping("/invoices")
+  @PreAuthorize("hasAuthority('PERM_BILLING_CREATE')")
   public Map<String, Object> createInvoice(@RequestBody InvoiceRequest r) {
     var result =
         service.createInvoice(
@@ -97,23 +107,27 @@ public class BillingController {
   }
 
   @GetMapping("/invoices/{id}")
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
   public Map<String, Object> invoice(@PathVariable UUID id) {
     return service.invoice(id);
   }
 
   @PostMapping("/invoices/{id}/lock")
+  @PreAuthorize("hasAuthority('PERM_BILLING_CREATE')")
   public Map<String, Object> lock(@PathVariable UUID id) {
     Invoice i = service.lock(id);
     return Map.of("status", i.getStatus(), "locked_at", i.getLockedAt());
   }
 
   @PostMapping("/payments")
+  @PreAuthorize("hasAuthority('PERM_PAYMENT_RECORD')")
   public Map<String, Object> payment(@RequestBody PaymentRequest r) {
     var result = service.payment(r.invoiceId(), r.mode(), r.amount(), r.reference());
     return Map.of("payment_id", result.payment().getId(), "overpayment", result.overpayment());
   }
 
   @GetMapping("/invoices/{id}/payments")
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
   public List<Payment> payments(@PathVariable UUID id) {
     return service.payments(id);
   }

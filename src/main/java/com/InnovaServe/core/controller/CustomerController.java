@@ -1,10 +1,11 @@
-package com.InnovaServe.api;
+package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.Customer;
 import com.InnovaServe.core.service.CustomerService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.*;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -17,6 +18,7 @@ public class CustomerController {
   }
 
   @GetMapping
+  @PreAuthorize("hasAuthority('PERM_CUSTOMER_READ')")
   public Page<Customer> list(
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
@@ -24,11 +26,13 @@ public class CustomerController {
   }
 
   @GetMapping(params = "phone")
+  @PreAuthorize("hasAuthority('PERM_CUSTOMER_READ')")
   public Customer find(@RequestParam String phone) {
     return service.findByPhone(phone);
   }
 
   @PostMapping
+  @PreAuthorize("hasAuthority('PERM_CUSTOMER_WRITE')")
   public Map<String, Object> create(@RequestBody CustomerRequest request) {
     var result =
         service.createOrUpdate(

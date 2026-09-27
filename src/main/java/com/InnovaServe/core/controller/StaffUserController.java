@@ -1,10 +1,11 @@
-package com.InnovaServe.api;
+package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.service.StaffUserService;
 import com.InnovaServe.core.service.TokenService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,22 +27,26 @@ public class StaffUserController {
   }
 
   @GetMapping("/users")
+  @PreAuthorize("hasAuthority('PERM_STAFF_READ')")
   public List<StaffUser> users() {
     return service.list();
   }
 
-  @PostMapping("/users")
+  @PostMapping("/create/user")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
   public Map<String, Object> create(@RequestBody CreateUser r) {
     StaffUser u = service.create(r.name(), r.phone(), r.email(), r.password(), r.pin(), r.roleId());
     return user(u);
   }
 
-  @PatchMapping("/users/{id}")
+  @PatchMapping("/user/{id}")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
   public Map<String, Object> update(@PathVariable UUID id, @RequestBody UpdateUser r) {
     return user(service.update(id, r.name(), r.roleId(), r.active()));
   }
 
-  @PostMapping("/users/{id}/verify-pin")
+  @PostMapping("/user/{id}/verify-pin")
+  @PreAuthorize("hasAuthority('PERM_APPROVAL_PIN_VERIFY')")
   public Map<String, Boolean> pin(@PathVariable UUID id, @RequestBody PinRequest r) {
     return Map.of("valid", service.verifyPin(id, r.pin()));
   }

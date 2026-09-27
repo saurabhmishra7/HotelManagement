@@ -8,4 +8,6 @@ public interface StaffRoleRepository extends JpaRepository<StaffRole, UUID> {
   List<StaffRole> findAllByTenantIdOrderByName(UUID tenantId);
 
   Optional<StaffRole> findByTenantIdAndId(UUID tenantId, UUID id);
+
+  List<StaffRole> findAllByTenantIdAndNameOrderById(UUID tenantId, String name);
 }

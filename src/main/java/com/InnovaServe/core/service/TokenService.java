@@ -11,13 +11,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class TokenService {
   private final String secret;
-  private final ObjectMapper mapper;
+  private final ObjectMapper mapper = new ObjectMapper();
 
-  public TokenService(@Value("${app.jwt.secret}") String secret, ObjectMapper mapper) {
+  public TokenService(@Value("${app.jwt.secret}") String secret) {
     if (secret == null || secret.length() < 32)
       throw new IllegalArgumentException("app.jwt.secret must contain at least 32 characters");
     this.secret = secret;
-    this.mapper = mapper;
   }
 
   public String issue(UUID tenant, UUID user, UUID role) {
@@ -26,7 +25,7 @@ public class TokenService {
       claims.put("tenant_id", tenant.toString());
       claims.put("user_id", user.toString());
       claims.put("role_id", role == null ? null : role.toString());
-      claims.put("exp", System.currentTimeMillis() / 1000 + 43200);
+      claims.put("exp", System.currentTimeMillis() / 1000 + 900);
       String payload =
           Base64.getUrlEncoder().withoutPadding().encodeToString(mapper.writeValueAsBytes(claims));
       return payload + "." + signature(payload);

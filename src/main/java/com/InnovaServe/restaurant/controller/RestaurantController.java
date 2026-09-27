@@ -1,10 +1,11 @@
-package com.InnovaServe.api;
+package com.InnovaServe.restaurant.controller;
 
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.service.RestaurantService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -17,16 +18,19 @@ public class RestaurantController {
   }
 
   @GetMapping("/menu-categories")
+  @PreAuthorize("hasAuthority('PERM_MENU_READ')")
   public List<MenuCategory> categories() {
     return service.categories();
   }
 
   @PostMapping("/menu-categories")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
   public MenuCategory createCategory(@RequestBody CategoryRequest r) {
     return service.addCategory(r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
   }
 
   @GetMapping("/menu-items")
+  @PreAuthorize("hasAuthority('PERM_MENU_READ')")
   public List<MenuItem> items(
       @RequestParam(name = "category_id", required = false) UUID category,
       @RequestParam(required = false) Boolean active) {
@@ -34,6 +38,7 @@ public class RestaurantController {
   }
 
   @PostMapping("/menu-items")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
   public MenuItem createItem(@RequestBody MenuItemRequest r) {
     return service.addItem(
         r.categoryId(),
@@ -45,22 +50,26 @@ public class RestaurantController {
   }
 
   @PatchMapping("/menu-items/{id}")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
   public MenuItem updateItem(@PathVariable UUID id, @RequestBody MenuItemUpdate r) {
     return service.updateItem(id, r.price(), r.active());
   }
 
   @GetMapping("/dining-tables")
+  @PreAuthorize("hasAuthority('PERM_TABLE_READ')")
   public List<DiningTable> tables() {
     return service.tables();
   }
 
   @PostMapping("/orders")
+  @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
   public Map<String, Object> openOrder(@RequestBody OpenOrder r) {
     RestaurantOrder o = service.openOrder(r.orderType(), r.tableId(), r.stayId());
     return Map.of("order_id", o.getId());
   }
 
   @PostMapping("/orders/{id}/items")
+  @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
   public Map<String, Object> addItems(@PathVariable UUID id, @RequestBody ItemsRequest r) {
     return service.addItems(
         id,
@@ -70,32 +79,38 @@ public class RestaurantController {
   }
 
   @GetMapping("/orders/{id}")
+  @PreAuthorize("hasAuthority('PERM_ORDER_READ')")
   public Map<String, Object> getOrder(@PathVariable UUID id) {
     return Map.of("order", service.getOrder(id), "items", service.orderItems(id));
   }
 
   @PostMapping("/orders/{id}/bill")
+  @PreAuthorize("hasAuthority('PERM_BILL_CREATE')")
   public Map<String, Object> bill(@PathVariable UUID id) {
     return service.generateBill(id);
   }
 
   @PostMapping("/bills/{id}/settle")
+  @PreAuthorize("hasAuthority('PERM_BILL_SETTLE')")
   public Map<String, String> settle(@PathVariable UUID id, @RequestBody SettleRequest r) {
     return Map.of("status", service.settleBill(id, r.settlementMode(), r.roomNumber()));
   }
 
   @GetMapping("/orders/pending-guest")
+  @PreAuthorize("hasAuthority('PERM_ORDER_CONFIRM')")
   public List<RestaurantOrder> pendingGuest() {
     return service.pendingGuestOrders();
   }
 
   @GetMapping("/kot-batches/{id}")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_READ')")
   public Map<String, Object> kot(@PathVariable UUID id) {
     KotBatch batch = service.kot(id);
     return Map.of("batch", batch, "items", service.itemsForBatch(id));
   }
 
   @PostMapping("/kot-batches/{id}/mark-printed")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
   public Map<String, Object> printed(@PathVariable UUID id) {
     return Map.of("printed_at", service.markPrinted(id).getPrintedAt());
   }

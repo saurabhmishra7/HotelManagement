@@ -1,9 +1,10 @@
-package com.InnovaServe.api;
+package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.AuditLog;
 import com.InnovaServe.core.service.AuditService;
 import java.time.*;
 import java.util.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -16,6 +17,7 @@ public class AuditController {
   }
 
   @GetMapping
+  @PreAuthorize("hasAuthority('PERM_AUDIT_READ')")
   public List<AuditLog> search(
       @RequestParam(name = "entity_type", required = false) String type,
       @RequestParam(name = "entity_id", required = false) UUID id,

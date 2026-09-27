@@ -81,7 +81,7 @@ public class ExpenseService {
 
   @Transactional
   public Expense approve(UUID id, String pin) {
-    approval.require(pin, "expense:approve");
+    approval.require(pin, "EXPENSE_APPROVE");
     Expense e =
         expenses
             .findByTenantIdAndId(tenant.tenantId(), id)
