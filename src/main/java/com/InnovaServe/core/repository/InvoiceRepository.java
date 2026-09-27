@@ -1,0 +1,2 @@
+package com.InnovaServe.core.repository;import com.InnovaServe.core.entity.Invoice;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;
+public interface InvoiceRepository extends JpaRepository<Invoice,UUID>{Optional<Invoice> findByTenantIdAndId(UUID t,UUID id);List<Invoice> findAllByTenantIdAndAccountId(UUID t,UUID account);long countByTenantIdAndFinancialYear(UUID t,String year);}

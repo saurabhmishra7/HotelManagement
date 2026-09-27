@@ -1,0 +1,9 @@
+package com.InnovaServe.core.repository;
+import com.InnovaServe.core.entity.StaffUser;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;
+public interface StaffUserRepository extends JpaRepository<StaffUser,UUID>{
+ Optional<StaffUser> findByTenantIdAndId(UUID tenantId,UUID id);
+ Optional<StaffUser> findByTenantIdAndPhoneAndActiveTrue(UUID tenantId,String phone);
+ Optional<StaffUser> findByTenantIdAndEmailAndActiveTrue(UUID tenantId,String email);
+ List<StaffUser> findAllByTenantIdOrderByName(UUID tenantId);
+ boolean existsByTenantIdAndPhone(UUID tenantId,String phone);
+}

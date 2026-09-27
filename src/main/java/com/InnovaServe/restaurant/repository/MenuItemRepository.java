@@ -1,0 +1,2 @@
+package com.InnovaServe.restaurant.repository;import com.InnovaServe.restaurant.entity.MenuItem;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;
+public interface MenuItemRepository extends JpaRepository<MenuItem,UUID>{List<MenuItem> findAllByTenantIdOrderByName(UUID t);List<MenuItem> findAllByTenantIdAndCategoryIdOrderByName(UUID t,UUID cat);Optional<MenuItem> findByTenantIdAndId(UUID t,UUID id);}

@@ -1,0 +1,2 @@
+package com.InnovaServe.restaurant.repository;import com.InnovaServe.restaurant.entity.OrderItem;import org.springframework.data.jpa.repository.JpaRepository;import java.util.*;
+public interface OrderItemRepository extends JpaRepository<OrderItem,UUID>{List<OrderItem> findAllByTenantIdAndOrderId(UUID t,UUID order);List<OrderItem> findAllByTenantIdAndKotBatchId(UUID t,UUID batch);Optional<OrderItem> findByTenantIdAndOrderIdAndId(UUID t,UUID order,UUID id);}
