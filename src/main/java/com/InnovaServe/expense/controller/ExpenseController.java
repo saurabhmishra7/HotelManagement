@@ -78,6 +78,12 @@ public class ExpenseController {
     return service.openLedger(r.shiftDate(), r.openingFloat());
   }
 
+  @GetMapping("/petty-cash")
+  @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
+  public List<PettyCashLedger> ledgers() {
+    return service.ledgers();
+  }
+
   @PostMapping("/petty-cash/{id}/top-up")
   @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
   public PettyCashLedger topup(@PathVariable UUID id, @RequestBody AmountRequest r) {
@@ -95,6 +101,12 @@ public class ExpenseController {
   public RecurringExpense recurring(@RequestBody RecurringRequest r) {
     return service.createRecurring(
         r.categoryId(), r.description(), r.amount(), r.frequency(), r.nextDueDate());
+  }
+
+  @GetMapping("/recurring-expenses")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_READ')")
+  public List<RecurringExpense> recurringExpenses() {
+    return service.recurringExpenses();
   }
 
   @GetMapping("/recurring-expenses/due")

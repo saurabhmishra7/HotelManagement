@@ -45,6 +45,14 @@ public class ExpenseService {
     return categories.findAllByTenantIdOrderByName(tenant.tenantId());
   }
 
+  public List<PettyCashLedger> ledgers() {
+    return petty.findAllByTenantIdOrderByShiftDateDesc(tenant.tenantId());
+  }
+
+  public List<RecurringExpense> recurringExpenses() {
+    return recurring.findAllByTenantIdOrderByNextDueDate(tenant.tenantId());
+  }
+
   @Transactional
   public ExpenseCategory addCategory(String name) {
     return categories.save(new ExpenseCategory(tenant.tenantId(), name));

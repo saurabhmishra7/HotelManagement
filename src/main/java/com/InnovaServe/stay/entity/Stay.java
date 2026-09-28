@@ -75,32 +75,6 @@ public class Stay extends TenantEntity {
     status = "active";
   }
 
-  public Stay(
-      UUID id,
-      UUID tenant,
-      UUID room,
-      UUID customer,
-      UUID account,
-      short guests,
-      boolean foreign,
-      String plan,
-      BigDecimal tariff,
-      LocalDateTime expected,
-      BigDecimal advance) {
-    super(id, tenant);
-    roomId = room;
-    customerId = customer;
-    accountId = account;
-    guestCount = guests;
-    foreignGuest = foreign;
-    this.plan = plan;
-    this.tariff = tariff;
-    checkInAt = LocalDateTime.now();
-    expectedCheckOutAt = expected;
-    advancePaid = advance;
-    status = "active";
-  }
-
   public UUID getRoomId() {
     return roomId;
   }

@@ -2,6 +2,7 @@ package com.InnovaServe.restaurant.entity;
 
 import com.InnovaServe.core.entity.TenantEntity;
 import jakarta.persistence.*;
+import java.util.UUID;
 
 @Entity
 @Table(name = "dining_table", schema = "restaurant")
@@ -17,9 +18,18 @@ public class DiningTable extends TenantEntity {
 
   protected DiningTable() {}
 
+  public DiningTable(UUID tenantId, String tableNumber, String section) {
+    super(tenantId);
+    this.tableNumber = tableNumber;
+    this.section = section;
+    this.status = "free";
+  }
+
   public String getTableNumber() {
     return tableNumber;
   }
+
+  public String getSection() { return section; }
 
   public String getStatus() {
     return status;

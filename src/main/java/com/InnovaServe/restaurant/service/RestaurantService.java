@@ -93,6 +93,16 @@ public class RestaurantService {
   }
 
   @Transactional
+  public DiningTable addTable(String number, String section) {
+    if (number == null || number.isBlank() || number.length() > 10)
+      throw new IllegalArgumentException("Table number is required and must be at most 10 characters");
+    String normalized = number.trim();
+    if (tables.existsByTenantIdAndTableNumber(tenant.tenantId(), normalized))
+      throw new IllegalArgumentException("Table number already exists");
+    return tables.save(new DiningTable(tenant.tenantId(), normalized, section));
+  }
+
+  @Transactional
   public RestaurantOrder openOrder(String type, UUID tableId, UUID stayId) {
     if (tableId != null) {
       DiningTable table =
@@ -111,6 +121,10 @@ public class RestaurantService {
     return orders
         .findByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("Order not found"));
+  }
+
+  public List<RestaurantOrder> orders() {
+    return orders.findAllByTenantIdOrderByCreatedAtDesc(tenant.tenantId());
   }
 
   public List<OrderItem> orderItems(UUID id) {
@@ -245,11 +259,11 @@ public class RestaurantService {
                   tenant.tenantId(), room.getId(), "active")
               .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
       billing.postInvoiceToAccount(stay.getAccountId(), invoice.getId());
-    } else if (billing.amountPaid(invoice.getId()).compareTo(invoice.getTotalAmount()) < 0) {
+    } else if (billing.amountDue(invoice).signum() > 0) {
       billing.payment(
           invoice.getId(),
           mode,
-          invoice.getTotalAmount().subtract(billing.amountPaid(invoice.getId())),
+          billing.amountDue(invoice),
           null);
     }
     bill.settle(mode);

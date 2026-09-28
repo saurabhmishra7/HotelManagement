@@ -2,6 +2,7 @@ package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.service.BillingService;
+import com.InnovaServe.core.service.CoreReferenceService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
 import java.time.LocalDate;
@@ -13,9 +14,35 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 public class BillingController {
   private final BillingService service;
+  private final CoreReferenceService references;
 
-  public BillingController(BillingService service) {
+  public BillingController(BillingService service, CoreReferenceService references) {
     this.service = service;
+    this.references = references;
+  }
+
+  @PostMapping("/qr-codes")
+  @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
+  public QRCode createQRCode(@RequestBody QRCodeRequest r) {
+    return references.createQRCode(r.targetType(), r.targetId());
+  }
+
+  @PostMapping("/credit-notes")
+  @PreAuthorize("hasAuthority('PERM_CREDIT_NOTE_CREATE')")
+  public CreditNote createCreditNote(@RequestBody CreditNoteRequest r) {
+    return references.createCreditNote(r.originalInvoiceId(), r.reason(), r.amount());
+  }
+
+  @GetMapping("/credit-notes")
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
+  public List<CreditNote> creditNotes() {
+    return references.creditNotes();
+  }
+
+  @GetMapping("/qr-codes")
+  @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
+  public List<QRCode> qrCodes() {
+    return references.qrCodes();
   }
 
   @GetMapping("/tax-rules")
@@ -165,4 +192,13 @@ public class BillingController {
       String mode,
       BigDecimal amount,
       String reference) {}
+
+  public record QRCodeRequest(
+      @JsonProperty("target_type") String targetType,
+      @JsonProperty("target_id") UUID targetId) {}
+
+  public record CreditNoteRequest(
+      @JsonProperty("original_invoice_id") UUID originalInvoiceId,
+      String reason,
+      BigDecimal amount) {}
 }

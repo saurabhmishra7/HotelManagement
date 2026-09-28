@@ -4,6 +4,7 @@ import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
 import com.InnovaServe.core.service.*;
 import com.InnovaServe.stay.entity.*;
+import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.repository.*;
 import java.math.*;
 import java.time.*;
@@ -49,6 +50,31 @@ public class StayService {
     return rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId());
   }
 
+  @Transactional
+  public Room createRoom(String roomNumber, RoomType roomType, String floor, BigDecimal baseTariff) {
+    if (roomNumber == null || roomNumber.isBlank() || roomNumber.length() > 10) {
+      throw new IllegalArgumentException("Room number is required and must be at most 10 characters");
+    }
+    if (roomType == null) {
+      throw new IllegalArgumentException("Room type is required");
+    }
+    if (floor != null && floor.length() > 10) {
+      throw new IllegalArgumentException("Floor must be at most 10 characters");
+    }
+    if (baseTariff == null || baseTariff.signum() <= 0) {
+      throw new IllegalArgumentException("Base tariff must be greater than zero");
+    }
+
+    UUID tenantId = tenant.tenantId();
+    String normalizedRoomNumber = roomNumber.trim();
+    if (rooms.existsByTenantIdAndRoomNumber(tenantId, normalizedRoomNumber)) {
+      throw new IllegalArgumentException("Room number already exists");
+    }
+
+    return rooms.save(
+        new Room(tenantId, normalizedRoomNumber, roomType.name(), floor, baseTariff, "vacant"));
+  }
+
   public Room room(UUID id) {
     return rooms
         .findByTenantIdAndId(tenant.tenantId(), id)
@@ -78,12 +104,10 @@ public class StayService {
             r.customer().idProofType(),
             r.customer().idProofNumber(),
             r.customer().address());
-    UUID sid = UUID.randomUUID(), aid = UUID.randomUUID();
-    Account account = accounts.save(new Account(aid, tid, "stay", "stay", sid));
+    Account account = accounts.save(new Account(tid, "stay", "stay", null));
     Stay stay =
         stays.save(
             new Stay(
-                sid,
                 tid,
                 room.getId(),
                 c.customer().getId(),
@@ -94,8 +118,9 @@ public class StayService {
                 r.tariff(),
                 r.expectedCheckOutAt(),
                 r.advancePaid() == null ? BigDecimal.ZERO : r.advancePaid()));
+    account.setLinkedEntityId(stay.getId());
     room.setStatus("occupied");
-    if (r.isForeignGuest()) forms.save(new FormCSubmission(tid, sid));
+    if (r.isForeignGuest()) forms.save(new FormCSubmission(tid, stay.getId()));
     return stay;
   }
 
@@ -175,11 +200,7 @@ public class StayService {
     List<com.InnovaServe.core.entity.Invoice> all = billing.invoicesForAccount(stay.getAccountId());
     BigDecimal due = BigDecimal.ZERO;
     for (var invoice : all) {
-      BigDecimal paid =
-          billing.payments(invoice.getId()).stream()
-              .map(com.InnovaServe.core.entity.Payment::getAmount)
-              .reduce(BigDecimal.ZERO, BigDecimal::add);
-      due = due.add(invoice.getTotalAmount().subtract(paid).max(BigDecimal.ZERO));
+      due = due.add(billing.amountDue(invoice));
     }
     return Map.of("invoices", all, "total_due", due.toPlainString());
   }

@@ -48,4 +48,12 @@ public class InvoiceLineItem extends TenantEntity {
     taxAmount = tax;
     lineTotal = total;
   }
+
+  public UUID getInvoiceId() { return invoiceId; }
+  public String getDescription() { return description; }
+  public BigDecimal getQuantity() { return quantity; }
+  public BigDecimal getUnitPrice() { return unitPrice; }
+  public UUID getTaxRuleId() { return taxRuleId; }
+  public BigDecimal getTaxAmount() { return taxAmount; }
+  public BigDecimal getLineTotal() { return lineTotal; }
 }

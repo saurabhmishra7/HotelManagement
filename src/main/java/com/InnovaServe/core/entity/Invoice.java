@@ -117,6 +117,11 @@ public class Invoice extends TenantEntity {
     lockedAt = LocalDateTime.now();
   }
 
+  public void markCredited() {
+    if (!"final".equals(status)) throw new IllegalStateException("Invoice must be final");
+    status = "credited";
+  }
+
   public void postToAccount(UUID account) {
     accountId = account;
   }

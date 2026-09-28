@@ -51,6 +51,10 @@ public class Account extends TenantEntity {
     return linkedEntityId;
   }
 
+  public void setLinkedEntityId(UUID linkedEntityId) {
+    this.linkedEntityId = linkedEntityId;
+  }
+
   public void close() {
     status = "closed";
     closedAt = LocalDateTime.now();

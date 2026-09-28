@@ -5,6 +5,7 @@ import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.repository.StaffRoleRepository;
 import com.InnovaServe.core.repository.StaffUserRepository;
 import com.InnovaServe.core.security.Permission;
+import com.InnovaServe.core.security.RoleType;
 import com.InnovaServe.core.service.TokenService;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
@@ -113,6 +114,11 @@ class BearerTokenFilter extends OncePerRequestFilter {
             } catch (IllegalArgumentException ignored) {
               // Unknown permissions in an older token are ignored.
             }
+          }
+          if ("OWNER".equals(role.getName()) || "HOTEL_ADMIN".equals(role.getName())) {
+            RoleType.valueOf(role.getName()).defaultPermissions().stream()
+                .map(permission -> new SimpleGrantedAuthority("PERM_" + permission.name()))
+                .forEach(authorities::add);
           }
         }
         var auth = new UsernamePasswordAuthenticationToken(claims, null, authorities);

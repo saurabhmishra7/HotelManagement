@@ -61,11 +61,23 @@ public class RestaurantController {
     return service.tables();
   }
 
+  @PostMapping("/dining-tables")
+  @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
+  public DiningTable createTable(@RequestBody DiningTableRequest r) {
+    return service.addTable(r.tableNumber(), r.section());
+  }
+
   @PostMapping("/orders")
   @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
   public Map<String, Object> openOrder(@RequestBody OpenOrder r) {
     RestaurantOrder o = service.openOrder(r.orderType(), r.tableId(), r.stayId());
     return Map.of("order_id", o.getId());
+  }
+
+  @GetMapping("/orders")
+  @PreAuthorize("hasAuthority('PERM_ORDER_READ')")
+  public List<RestaurantOrder> orders() {
+    return service.orders();
   }
 
   @PostMapping("/orders/{id}/items")
@@ -116,6 +128,9 @@ public class RestaurantController {
   }
 
   public record CategoryRequest(String name, @JsonProperty("sort_order") Integer sortOrder) {}
+
+  public record DiningTableRequest(
+      @JsonProperty("table_number") String tableNumber, String section) {}
 
   public record MenuItemRequest(
       @JsonProperty("category_id") UUID categoryId,

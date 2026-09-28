@@ -1,7 +1,9 @@
 package com.InnovaServe.stay.controller;
 
 import com.InnovaServe.stay.entity.*;
+import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.service.StayService;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
 import java.util.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +22,21 @@ public class StayController {
   @PreAuthorize("hasAuthority('PERM_ROOM_READ')")
   public List<Room> rooms() {
     return service.rooms();
+  }
+
+  @GetMapping("/room-types")
+  @PreAuthorize("hasAuthority('PERM_ROOM_READ')")
+  public List<RoomTypeOption> roomTypes() {
+    return Arrays.stream(RoomType.values())
+        .map(type -> new RoomTypeOption(type.name(), type.label()))
+        .toList();
+  }
+
+  @PostMapping("/rooms")
+  @PreAuthorize("hasAuthority('PERM_ROOM_MANAGE')")
+  public Room createRoom(@RequestBody RoomRequest request) {
+    return service.createRoom(
+        request.roomNumber(), request.roomType(), request.floor(), request.baseTariff());
   }
 
   @GetMapping("/rooms/{id}")
@@ -87,6 +104,14 @@ public class StayController {
   }
 
   public record StatusRequest(String status) {}
+
+  public record RoomTypeOption(String value, String label) {}
+
+  public record RoomRequest(
+      @JsonProperty("room_number") String roomNumber,
+      @JsonProperty("room_type") RoomType roomType,
+      String floor,
+      @JsonProperty("base_tariff") BigDecimal baseTariff) {}
 
   public record ChargeRequest(String description, BigDecimal amount) {}
 

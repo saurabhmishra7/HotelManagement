@@ -44,6 +44,10 @@ public class RestaurantBill extends TenantEntity {
     return invoiceId;
   }
 
+  public BigDecimal getDiscountAmount() { return discountAmount; }
+  public UUID getDiscountApprovedBy() { return discountApprovedBy; }
+  public LocalDateTime getCreatedAt() { return createdAt; }
+
   public String getSettlementMode() {
     return settlementMode;
   }

@@ -39,6 +39,14 @@ public class PettyCashLedger extends TenantEntity {
     expected = opening;
   }
 
+  public LocalDate getShiftDate() { return shiftDate; }
+  public BigDecimal getOpeningFloat() { return openingFloat; }
+  public BigDecimal getTopUpAmount() { return topUpAmount; }
+  public BigDecimal getClosingBalanceExpected() { return expected; }
+  public BigDecimal getClosingBalanceActual() { return actual; }
+  public UUID getReconciledBy() { return reconciledBy; }
+  public LocalDateTime getReconciledAt() { return reconciledAt; }
+
   public void topUp(BigDecimal amount) {
     if (reconciledAt != null) throw new IllegalStateException("Ledger already reconciled");
     topUpAmount = topUpAmount.add(amount);

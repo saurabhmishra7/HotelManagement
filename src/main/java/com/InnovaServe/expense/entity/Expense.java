@@ -74,6 +74,15 @@ public class Expense extends TenantEntity {
     return amount;
   }
 
+  public UUID getCategoryId() { return categoryId; }
+  public String getDepartment() { return department; }
+  public String getVendorName() { return vendorName; }
+  public String getPaymentMode() { return paymentMode; }
+  public String getReceiptFileRef() { return receiptFileRef; }
+  public UUID getEnteredBy() { return enteredBy; }
+  public UUID getApprovedBy() { return approvedBy; }
+  public LocalDate getExpenseDate() { return expenseDate; }
+
   public void markPending() {
     approvalStatus = "pending";
   }

@@ -2,12 +2,16 @@ package com.InnovaServe.api;
 
 import java.util.*;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+  private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
   @ExceptionHandler(NoSuchElementException.class)
   public ResponseEntity<?> notFound(NoSuchElementException ex) {
     String message = ex.getMessage() == null ? "Resource not found" : ex.getMessage();
@@ -89,6 +93,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<?> internal(Exception ex) {
+    log.error("Unhandled API exception", ex);
     return ResponseEntity.internalServerError()
         .body(
             Map.of(

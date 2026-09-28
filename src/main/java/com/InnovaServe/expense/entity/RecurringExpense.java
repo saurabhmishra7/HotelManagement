@@ -59,6 +59,8 @@ public class RecurringExpense extends TenantEntity {
     return nextDueDate;
   }
 
+  public LocalDate getLastPaidDate() { return lastPaidDate; }
+
   public void markPaid(LocalDate date) {
     lastPaidDate = date;
     nextDueDate = "weekly".equals(frequency) ? nextDueDate.plusWeeks(1) : nextDueDate.plusMonths(1);

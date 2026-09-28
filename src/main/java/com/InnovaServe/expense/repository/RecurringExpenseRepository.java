@@ -6,6 +6,8 @@ import java.util.*;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RecurringExpenseRepository extends JpaRepository<RecurringExpense, UUID> {
+  List<RecurringExpense> findAllByTenantIdOrderByNextDueDate(UUID t);
+
   List<RecurringExpense> findAllByTenantIdAndNextDueDateLessThanEqualOrderByNextDueDate(
       UUID t, LocalDate date);
 

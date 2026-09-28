@@ -8,4 +8,6 @@ public interface DiningTableRepository extends JpaRepository<DiningTable, UUID> 
   List<DiningTable> findAllByTenantIdOrderByTableNumber(UUID t);
 
   Optional<DiningTable> findByTenantIdAndId(UUID t, UUID id);
+
+  boolean existsByTenantIdAndTableNumber(UUID t, String tableNumber);
 }

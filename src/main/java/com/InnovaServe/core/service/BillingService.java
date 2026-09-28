@@ -17,6 +17,7 @@ public class BillingService {
   private final PaymentRepository payments;
   private final AccountRepository accounts;
   private final TaxRuleRepository taxes;
+  private final CreditNoteRepository creditNotes;
 
   public BillingService(
       TenantContext t,
@@ -24,13 +25,15 @@ public class BillingService {
       InvoiceLineItemRepository l,
       PaymentRepository p,
       AccountRepository a,
-      TaxRuleRepository tax) {
+      TaxRuleRepository tax,
+      CreditNoteRepository creditNotes) {
     tenant = t;
     invoices = i;
     lines = l;
     payments = p;
     accounts = a;
     taxes = tax;
+    this.creditNotes = creditNotes;
   }
 
   public List<TaxRule> taxes(String applies) {
@@ -168,6 +171,13 @@ public class BillingService {
     return payments.sumPaid(tenant.tenantId(), invoiceId);
   }
 
+  public BigDecimal amountDue(Invoice invoice) {
+    BigDecimal credits =
+        creditNotes.totalForInvoice(tenant.tenantId(), invoice.getId());
+    return invoice.getTotalAmount().subtract(credits).subtract(amountPaid(invoice.getId()))
+        .max(BigDecimal.ZERO);
+  }
+
   @Transactional
   public Invoice lock(UUID id) {
     Invoice i =
@@ -188,8 +198,8 @@ public class BillingService {
       throw new IllegalStateException("Invoice must be final before payment");
     if (!Set.of("cash", "card", "upi", "account").contains(mode))
       throw new IllegalArgumentException("Invalid payment mode");
-    BigDecimal paid = payments.sumPaid(tenant.tenantId(), invoiceId);
-    boolean over = paid.add(amount).compareTo(i.getTotalAmount()) > 0;
+    BigDecimal due = amountDue(i);
+    boolean over = amount.compareTo(due) > 0;
     Payment p = payments.save(new Payment(tenant.tenantId(), invoiceId, mode, amount, reference));
     return new PaymentResult(p, over);
   }
@@ -206,8 +216,8 @@ public class BillingService {
     Account account = account(id);
     List<Invoice> list = invoices.findAllByTenantIdAndAccountId(tenant.tenantId(), id);
     for (Invoice i : list)
-      if (!"final".equals(i.getStatus())
-          || payments.sumPaid(tenant.tenantId(), i.getId()).compareTo(i.getTotalAmount()) < 0)
+      if ((!"final".equals(i.getStatus()) && !"credited".equals(i.getStatus()))
+          || amountDue(i).signum() > 0)
         throw new IllegalStateException("HasUnsettledCharges");
     account.close();
   }

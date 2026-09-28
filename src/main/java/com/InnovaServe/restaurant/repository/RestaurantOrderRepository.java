@@ -5,6 +5,8 @@ import java.util.*;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder, UUID> {
+  List<RestaurantOrder> findAllByTenantIdOrderByCreatedAtDesc(UUID t);
+
   Optional<RestaurantOrder> findByTenantIdAndId(UUID t, UUID id);
 
   List<RestaurantOrder> findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(
