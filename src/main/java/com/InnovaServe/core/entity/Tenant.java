@@ -19,6 +19,9 @@ public class Tenant {
   @Column(nullable = false, length = 200)
   private String name;
 
+  @Column(name = "tenant_code", nullable = false, unique = true, length = 12)
+  private String tenantCode;
+
   @Column(length = 15)
   private String gstin;
 
@@ -32,6 +35,7 @@ public class Tenant {
 
   public Tenant(String name, String gstin, String address) {
     this.name = name;
+    this.tenantCode = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     this.gstin = gstin;
     this.address = address;
   }
@@ -42,6 +46,10 @@ public class Tenant {
 
   public String getName() {
     return name;
+  }
+
+  public String getTenantCode() {
+    return tenantCode;
   }
 
   public String getGstin() {

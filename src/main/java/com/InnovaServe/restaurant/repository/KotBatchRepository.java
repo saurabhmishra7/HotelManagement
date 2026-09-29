@@ -8,4 +8,6 @@ public interface KotBatchRepository extends JpaRepository<KotBatch, UUID> {
   List<KotBatch> findAllByTenantIdAndOrderIdOrderByBatchNumber(UUID t, UUID order);
 
   Optional<KotBatch> findByTenantIdAndId(UUID t, UUID id);
+
+  List<KotBatch> findAllByTenantIdAndPrintedAtIsNull(UUID tenantId);
 }

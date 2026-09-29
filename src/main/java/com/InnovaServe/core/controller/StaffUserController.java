@@ -2,9 +2,11 @@ package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.service.StaffUserService;
+import com.InnovaServe.core.service.PasswordResetService;
 import com.InnovaServe.core.service.TokenService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,10 +15,13 @@ import org.springframework.web.bind.annotation.*;
 public class StaffUserController {
   private final StaffUserService service;
   private final TokenService tokens;
+  private final PasswordResetService passwordResets;
 
-  public StaffUserController(StaffUserService s, TokenService tokens) {
+  public StaffUserController(
+      StaffUserService s, TokenService tokens, PasswordResetService passwordResets) {
     service = s;
     this.tokens = tokens;
+    this.passwordResets = passwordResets;
   }
 
   @PostMapping("/auth/login")
@@ -24,6 +29,20 @@ public class StaffUserController {
       @RequestHeader("X-Tenant-Id") UUID tenant, @RequestBody LoginRequest r) {
     StaffUser u = service.authenticate(tenant, r.identity(), r.password());
     return Map.of("token", tokens.issue(tenant, u.getId(), u.getRoleId()), "user", user(u));
+  }
+
+  @PostMapping("/auth/password-reset/request")
+  public ResponseEntity<Map<String, String>> requestPasswordReset(
+      @RequestBody PasswordResetRequest request) {
+    passwordResets.request(request.tenantCode(), request.email());
+    return ResponseEntity.accepted()
+        .body(Map.of("message", "If the account exists, password reset instructions were sent"));
+  }
+
+  @PostMapping("/auth/password-reset/confirm")
+  public Map<String, String> confirmPasswordReset(@RequestBody PasswordResetConfirm request) {
+    passwordResets.confirm(request.tenantCode(), request.token(), request.newPassword());
+    return Map.of("message", "Password has been reset; please log in again");
   }
 
   @GetMapping("/users")
@@ -67,6 +86,14 @@ public class StaffUserController {
       return phone != null ? phone : email;
     }
   }
+
+  public record PasswordResetRequest(
+      @JsonProperty("tenant_code") String tenantCode, String email) {}
+
+  public record PasswordResetConfirm(
+      @JsonProperty("tenant_code") String tenantCode,
+      String token,
+      @JsonProperty("new_password") String newPassword) {}
 
   public record CreateUser(
       String name,

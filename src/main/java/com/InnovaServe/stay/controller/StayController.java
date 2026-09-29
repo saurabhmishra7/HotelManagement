@@ -3,6 +3,8 @@ package com.InnovaServe.stay.controller;
 import com.InnovaServe.stay.entity.*;
 import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.service.StayService;
+import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
 import java.util.*;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1")
+@RequiresModule(ModuleType.STAY)
 public class StayController {
   private final StayService service;
 

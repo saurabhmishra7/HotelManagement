@@ -23,6 +23,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
 
   Optional<Expense> findByTenantIdAndId(UUID t, UUID id);
 
+  boolean existsByTenantIdAndApprovalStatus(UUID tenantId, String approvalStatus);
+
   @Query(
       "select e.department,sum(e.amount) from Expense e where e.tenantId=:t and (:from is null or"
           + " e.expenseDate>=:from) and (:to is null or e.expenseDate<=:to) group by e.department")

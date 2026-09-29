@@ -2,20 +2,58 @@ package com.InnovaServe.expense.controller;
 
 import com.InnovaServe.expense.entity.*;
 import com.InnovaServe.expense.service.ExpenseService;
+import com.InnovaServe.expense.service.ExpenseReceiptStorageService;
+import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import java.nio.charset.StandardCharsets;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1")
+@RequiresModule(ModuleType.EXPENSE)
 public class ExpenseController {
   private final ExpenseService service;
+  private final ExpenseReceiptStorageService receiptStorage;
+  private final com.InnovaServe.core.service.TenantContext tenant;
 
-  public ExpenseController(ExpenseService service) {
+  public ExpenseController(
+      ExpenseService service,
+      ExpenseReceiptStorageService receiptStorage,
+      com.InnovaServe.core.service.TenantContext tenant) {
     this.service = service;
+    this.receiptStorage = receiptStorage;
+    this.tenant = tenant;
+  }
+
+  @PostMapping(value = "/expenses/receipts", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_CREATE')")
+  public Map<String, String> uploadReceipt(@RequestPart("file") MultipartFile file) {
+    return Map.of("receipt_file_ref", receiptStorage.store(tenant.tenantId(), file));
+  }
+
+  @GetMapping("/expenses/receipts/{receiptId}")
+  @PreAuthorize("hasAuthority('PERM_EXPENSE_READ')")
+  public ResponseEntity<byte[]> receipt(@PathVariable UUID receiptId) {
+    var file = receiptStorage.load(tenant.tenantId(), receiptId);
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(file.mediaType()))
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.attachment()
+                .filename(file.filename(), StandardCharsets.UTF_8)
+                .build()
+                .toString())
+        .body(file.content());
   }
 
   @GetMapping("/expense-categories")

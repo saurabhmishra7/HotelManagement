@@ -21,6 +21,7 @@ public class ExpenseService {
   private final ApprovalService approval;
   private final AuditService audit;
   private final BigDecimal approvalLimit;
+  private final ExpenseReceiptStorageService receiptStorage;
 
   public ExpenseService(
       TenantContext t,
@@ -30,6 +31,7 @@ public class ExpenseService {
       RecurringExpenseRepository r,
       ApprovalService approval,
       AuditService audit,
+      ExpenseReceiptStorageService receiptStorage,
       @Value("${app.expense.approval-limit:0}") BigDecimal approvalLimit) {
     tenant = t;
     categories = c;
@@ -38,6 +40,7 @@ public class ExpenseService {
     recurring = r;
     this.approval = approval;
     this.audit = audit;
+    this.receiptStorage = receiptStorage;
     this.approvalLimit = approvalLimit;
   }
 
@@ -68,6 +71,7 @@ public class ExpenseService {
       throw new IllegalArgumentException("Invalid department");
     if (!Set.of("cash", "card", "upi", "petty_cash").contains(r.paymentMode()))
       throw new IllegalArgumentException("Invalid payment mode");
+    receiptStorage.requireReceipt(tid, r.receiptFileRef());
     Expense e =
         new Expense(
             tid,

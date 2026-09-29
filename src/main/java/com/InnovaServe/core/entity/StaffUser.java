@@ -2,6 +2,7 @@ package com.InnovaServe.core.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -34,6 +35,15 @@ public class StaffUser {
 
   @Column(name = "pin_hash", columnDefinition = "text")
   private String pinHash;
+
+  @Column(name = "password_reset_token_hash", length = 64)
+  private String passwordResetTokenHash;
+
+  @Column(name = "password_reset_expires_at")
+  private Instant passwordResetExpiresAt;
+
+  @Column(name = "password_reset_requested_at")
+  private Instant passwordResetRequestedAt;
 
   @Column(name = "role_id")
   private UUID roleId;
@@ -97,6 +107,32 @@ public class StaffUser {
 
   public String getPinHash() {
     return pinHash;
+  }
+
+  public boolean issuePasswordReset(String tokenHash, Instant expiresAt, Instant now) {
+    if (passwordResetRequestedAt != null
+        && passwordResetRequestedAt.isAfter(now.minusSeconds(60))) return false;
+    passwordResetTokenHash = tokenHash;
+    passwordResetExpiresAt = expiresAt;
+    passwordResetRequestedAt = now;
+    return true;
+  }
+
+  public void clearPasswordReset() {
+    passwordResetTokenHash = null;
+    passwordResetExpiresAt = null;
+  }
+
+  public boolean resetPassword(String tokenHash, String newPasswordHash, Instant now) {
+    if (!active
+        || passwordResetTokenHash == null
+        || !passwordResetTokenHash.equals(tokenHash)
+        || passwordResetExpiresAt == null
+        || !passwordResetExpiresAt.isAfter(now)) return false;
+    passwordHash = newPasswordHash;
+    passwordResetTokenHash = null;
+    passwordResetExpiresAt = null;
+    return true;
   }
 
   public void update(String name, UUID roleId, Boolean active) {

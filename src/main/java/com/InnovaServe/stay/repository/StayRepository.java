@@ -11,4 +11,9 @@ public interface StayRepository extends JpaRepository<Stay, UUID> {
       UUID tenantId, UUID roomId, String status);
 
   List<Stay> findAllByTenantIdAndAccountId(UUID tenantId, UUID accountId);
+
+  List<Stay> findAllByTenantIdAndCustomerIdOrderByCheckInAtDesc(
+      UUID tenantId, UUID customerId);
+
+  boolean existsByTenantIdAndStatus(UUID tenantId, String status);
 }

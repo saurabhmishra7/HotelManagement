@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface QRCodeRepository extends JpaRepository<QRCode, UUID> {
   List<QRCode> findAllByTenantIdOrderByCreatedAtDesc(UUID tenantId);
+
+  java.util.Optional<QRCode> findByTokenAndActiveTrue(String token);
 }

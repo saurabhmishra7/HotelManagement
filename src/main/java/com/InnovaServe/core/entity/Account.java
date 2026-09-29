@@ -47,6 +47,10 @@ public class Account extends TenantEntity {
     return status;
   }
 
+  public String getOpenedByModule() {
+    return openedByModule;
+  }
+
   public UUID getLinkedEntityId() {
     return linkedEntityId;
   }

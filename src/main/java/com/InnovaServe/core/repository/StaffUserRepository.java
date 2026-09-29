@@ -11,6 +11,11 @@ public interface StaffUserRepository extends JpaRepository<StaffUser, UUID> {
 
   Optional<StaffUser> findByTenantIdAndEmailAndActiveTrue(UUID tenantId, String email);
 
+  Optional<StaffUser> findByTenantIdAndEmailIgnoreCaseAndActiveTrue(UUID tenantId, String email);
+
+  Optional<StaffUser> findByTenantIdAndPasswordResetTokenHashAndActiveTrue(
+      UUID tenantId, String tokenHash);
+
   List<StaffUser> findAllByTenantIdOrderByName(UUID tenantId);
 
   boolean existsByTenantIdAndPhone(UUID tenantId, String phone);

@@ -3,10 +3,10 @@ package com.InnovaServe.restaurant.service;
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
 import com.InnovaServe.core.service.*;
+import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.contracts.StayLookupPort;
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.repository.*;
-import com.InnovaServe.stay.entity.*;
-import com.InnovaServe.stay.repository.*;
 import java.math.*;
 import java.util.*;
 import org.springframework.stereotype.Service;
@@ -24,8 +24,8 @@ public class RestaurantService {
   private final KotBatchRepository batches;
   private final RestaurantBillRepository bills;
   private final BillingService billing;
-  private final RoomRepository rooms;
-  private final StayRepository stays;
+  private final ModuleEntitlementService moduleEntitlements;
+  private final StayLookupPort stayLookup;
 
   public RestaurantService(
       TenantContext t,
@@ -37,8 +37,8 @@ public class RestaurantService {
       KotBatchRepository b,
       RestaurantBillRepository bills,
       BillingService billing,
-      RoomRepository rooms,
-      StayRepository stays) {
+      ModuleEntitlementService moduleEntitlements,
+      StayLookupPort stayLookup) {
     tenant = t;
     categories = c;
     items = i;
@@ -48,8 +48,8 @@ public class RestaurantService {
     batches = b;
     this.bills = bills;
     this.billing = billing;
-    this.rooms = rooms;
-    this.stays = stays;
+    this.moduleEntitlements = moduleEntitlements;
+    this.stayLookup = stayLookup;
   }
 
   public List<MenuCategory> categories() {
@@ -104,6 +104,21 @@ public class RestaurantService {
 
   @Transactional
   public RestaurantOrder openOrder(String type, UUID tableId, UUID stayId) {
+    if (!Set.of("dine_in", "room_service", "takeaway").contains(type))
+      throw new IllegalArgumentException("Invalid restaurant order type");
+    if ("room_service".equals(type))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    if ("room_service".equals(type) && stayId == null)
+      throw new IllegalArgumentException("Room-service orders must be associated with a stay");
+    if (stayId != null) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+      StayLookupPort.StaySummary stay =
+          stayLookup
+              .findById(tenant.tenantId(), stayId)
+              .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+      if (!"active".equals(stay.status()))
+        throw new IllegalStateException("Restaurant orders require an active stay");
+    }
     if (tableId != null) {
       DiningTable table =
           tables
@@ -168,6 +183,36 @@ public class RestaurantService {
         tenant.tenantId(), "qr_guest", "pending");
   }
 
+  @Transactional
+  public Map<String, Object> confirmGuestOrder(UUID orderId) {
+    RestaurantOrder order = getOrder(orderId);
+    if (!"qr_guest".equals(order.getOrderSource()))
+      throw new IllegalStateException("Only QR guest orders can be confirmed here");
+    order.confirm(tenant.userId());
+    List<OrderItem> pendingItems = orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), orderId);
+    Map<String, List<OrderItem>> byStation = new LinkedHashMap<>();
+    for (OrderItem item : pendingItems) {
+      MenuItem menuItem =
+          items
+              .findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
+              .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
+      byStation.computeIfAbsent(menuItem.getStation(), ignored -> new ArrayList<>()).add(item);
+    }
+    List<KotBatch> createdBatches = new ArrayList<>();
+    for (Map.Entry<String, List<OrderItem>> entry : byStation.entrySet()) {
+      short batchNumber =
+          (short)
+              (batches.findAllByTenantIdAndOrderIdOrderByBatchNumber(tenant.tenantId(), orderId)
+                      .size()
+                  + 1);
+      KotBatch batch =
+          batches.save(new KotBatch(tenant.tenantId(), orderId, entry.getKey(), batchNumber));
+      entry.getValue().forEach(item -> item.send(batch.getId()));
+      createdBatches.add(batch);
+    }
+    return Map.of("order", order, "kot_batches", createdBatches);
+  }
+
   public KotBatch kot(UUID id) {
     return batches
         .findByTenantIdAndId(tenant.tenantId(), id)
@@ -177,6 +222,40 @@ public class RestaurantService {
   public List<OrderItem> itemsForBatch(UUID id) {
     kot(id);
     return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), id);
+  }
+
+  public List<Map<String, Object>> pendingKots(String station) {
+    if (station != null && !Set.of("kitchen", "bar").contains(station))
+      throw new IllegalArgumentException("station must be kitchen or bar");
+    return batches.findAllByTenantIdAndPrintedAtIsNull(tenant.tenantId()).stream()
+        .filter(batch -> station == null || station.equals(batch.getStation()))
+        .sorted(Comparator.comparing(KotBatch::getBatchNumber))
+        .map(
+            batch ->
+                Map.<String, Object>of(
+                    "batch", batch,
+                    "items", orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), batch.getId())))
+        .toList();
+  }
+
+  @Transactional
+  public OrderItem markItemPreparing(UUID itemId) {
+    OrderItem item =
+        orderItems
+            .findByTenantIdAndId(tenant.tenantId(), itemId)
+            .orElseThrow(() -> new NoSuchElementException("Order item not found"));
+    item.markPreparing();
+    return item;
+  }
+
+  @Transactional
+  public OrderItem markItemServed(UUID itemId) {
+    OrderItem item =
+        orderItems
+            .findByTenantIdAndId(tenant.tenantId(), itemId)
+            .orElseThrow(() -> new NoSuchElementException("Order item not found"));
+    item.markServed();
+    return item;
   }
 
   @Transactional
@@ -219,8 +298,18 @@ public class RestaurantService {
               menu.getPrice(),
               menu.getTaxRuleId()));
     }
+    UUID customerId = null;
+    if (order.getStayId() != null
+        && moduleEntitlements.isActive(tenant.tenantId(), ModuleType.STAY)) {
+      StayLookupPort.StaySummary stay =
+          stayLookup
+              .findById(tenant.tenantId(), order.getStayId())
+              .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+      customerId = stay.customerId();
+    }
     var result =
-        billing.createInvoice(new BillingService.NewInvoice(null, null, "restaurant", lines));
+        billing.createInvoice(
+            new BillingService.NewInvoice(null, customerId, "restaurant", lines));
     billing.lock(result.invoice().getId());
     RestaurantBill bill =
         bills.save(new RestaurantBill(tenant.tenantId(), orderId, result.invoice().getId()));
@@ -242,23 +331,24 @@ public class RestaurantService {
   public String settleBill(UUID billId, String mode, String roomNumber) {
     if (!Set.of("cash", "card", "upi", "account").contains(mode))
       throw new IllegalArgumentException("Invalid settlement mode");
+    if ("account".equals(mode))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
     RestaurantBill bill =
         bills
             .findByTenantIdAndId(tenant.tenantId(), billId)
             .orElseThrow(() -> new NoSuchElementException("Restaurant bill not found"));
     Invoice invoice = billing.getInvoice(bill.getInvoiceId());
     if ("account".equals(mode)) {
-      Room room =
-          rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream()
-              .filter(r -> r.getRoomNumber().equals(roomNumber))
-              .findFirst()
+      StayLookupPort.StaySummary stay =
+          stayLookup
+              .findActiveByRoomNumber(tenant.tenantId(), roomNumber)
               .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
-      Stay stay =
-          stays
-              .findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(
-                  tenant.tenantId(), room.getId(), "active")
-              .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
-      billing.postInvoiceToAccount(stay.getAccountId(), invoice.getId());
+      RestaurantOrder order = getOrder(bill.getOrderId());
+      if (order.getStayId() != null && !order.getStayId().equals(stay.id()))
+        throw new IllegalStateException("Order is linked to a different stay");
+      order.associateStay(stay.id());
+      invoice.associateCustomerIfMissing(stay.customerId());
+      billing.postInvoiceToAccount(stay.accountId(), invoice.getId());
     } else if (billing.amountDue(invoice).signum() > 0) {
       billing.payment(
           invoice.getId(),

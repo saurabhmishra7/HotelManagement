@@ -5,12 +5,54 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
+import com.InnovaServe.core.service.ModuleEntitlementService.ModuleNotEntitledException;
+import com.InnovaServe.core.service.PasswordResetService.PasswordResetUnavailableException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+  @ExceptionHandler(ModuleNotEntitledException.class)
+  public ResponseEntity<?> moduleNotEntitled(ModuleNotEntitledException ex) {
+    return ResponseEntity.status(403)
+        .body(
+            Map.of(
+                "error",
+                "MODULE_NOT_ENTITLED",
+                "message",
+                ex.getMessage(),
+                "details",
+                Map.of("module", ex.module().key())));
+  }
+
+  @ExceptionHandler(PasswordResetUnavailableException.class)
+  public ResponseEntity<?> passwordResetUnavailable(PasswordResetUnavailableException ex) {
+    return ResponseEntity.status(503)
+        .body(
+            Map.of(
+                "error",
+                "PASSWORD_RESET_UNAVAILABLE",
+                "message",
+                ex.getMessage(),
+                "details",
+                Map.of()));
+  }
+
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<?> uploadTooLarge(MaxUploadSizeExceededException ex) {
+    return ResponseEntity.status(413)
+        .body(
+            Map.of(
+                "error",
+                "UploadTooLarge",
+                "message",
+                "Receipt files must be 10 MB or smaller",
+                "details",
+                Map.of()));
+  }
 
   @ExceptionHandler(NoSuchElementException.class)
   public ResponseEntity<?> notFound(NoSuchElementException ex) {

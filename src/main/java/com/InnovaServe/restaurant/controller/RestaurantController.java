@@ -2,6 +2,9 @@ package com.InnovaServe.restaurant.controller;
 
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.service.RestaurantService;
+import com.InnovaServe.restaurant.service.GuestStaySpendService;
+import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.util.*;
@@ -10,11 +13,30 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1")
+@RequiresModule(ModuleType.RESTAURANT)
 public class RestaurantController {
   private final RestaurantService service;
+  private final GuestStaySpendService spendHistory;
 
-  public RestaurantController(RestaurantService service) {
+  public RestaurantController(RestaurantService service, GuestStaySpendService spendHistory) {
     this.service = service;
+    this.spendHistory = spendHistory;
+  }
+
+  @GetMapping("/stays/{id}/spend-history")
+  @RequiresModule(ModuleType.STAY)
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
+  public Map<String, Object> staySpendHistory(
+      @PathVariable UUID id, @RequestParam(defaultValue = "all") String source) {
+    return spendHistory.forStay(id, source);
+  }
+
+  @GetMapping("/customers/{customerId}/spend-history")
+  @RequiresModule(ModuleType.STAY)
+  @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
+  public Map<String, Object> customerSpendHistory(
+      @PathVariable UUID customerId, @RequestParam(defaultValue = "all") String source) {
+    return spendHistory.forCustomer(customerId, source);
   }
 
   @GetMapping("/menu-categories")
@@ -114,11 +136,36 @@ public class RestaurantController {
     return service.pendingGuestOrders();
   }
 
+  @PostMapping("/orders/{id}/confirm-guest")
+  @PreAuthorize("hasAuthority('PERM_ORDER_CONFIRM')")
+  public Map<String, Object> confirmGuestOrder(@PathVariable UUID id) {
+    return service.confirmGuestOrder(id);
+  }
+
   @GetMapping("/kot-batches/{id}")
   @PreAuthorize("hasAuthority('PERM_KITCHEN_READ')")
   public Map<String, Object> kot(@PathVariable UUID id) {
     KotBatch batch = service.kot(id);
     return Map.of("batch", batch, "items", service.itemsForBatch(id));
+  }
+
+  @GetMapping("/kot-batches/pending")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_READ')")
+  public List<Map<String, Object>> pendingKots(
+      @RequestParam(required = false) String station) {
+    return service.pendingKots(station);
+  }
+
+  @PostMapping("/order-items/{id}/preparing")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  public OrderItem markItemPreparing(@PathVariable UUID id) {
+    return service.markItemPreparing(id);
+  }
+
+  @PostMapping("/order-items/{id}/served")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  public OrderItem markItemServed(@PathVariable UUID id) {
+    return service.markItemServed(id);
   }
 
   @PostMapping("/kot-batches/{id}/mark-printed")

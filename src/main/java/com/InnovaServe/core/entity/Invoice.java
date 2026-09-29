@@ -125,4 +125,8 @@ public class Invoice extends TenantEntity {
   public void postToAccount(UUID account) {
     accountId = account;
   }
+
+  public void associateCustomerIfMissing(UUID customer) {
+    if (customerId == null) customerId = customer;
+  }
 }

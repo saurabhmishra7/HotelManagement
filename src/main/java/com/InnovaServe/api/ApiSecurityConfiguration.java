@@ -40,7 +40,15 @@ public class ApiSecurityConfiguration {
         .authorizeHttpRequests(
             a ->
                 a.requestMatchers("/api/v1/auth/login").permitAll()
+                    .requestMatchers("/api/v1/auth/password-reset/**")
+                    .permitAll()
+                    .requestMatchers("/api/v1/guest/**")
+                    .permitAll()
+                    .requestMatchers("/api/v1/tenants/lookup")
+                    .permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/tenants")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.PATCH, "/api/v1/tenants/*/modules")
                     .permitAll()
                     .anyRequest()
                     .authenticated())

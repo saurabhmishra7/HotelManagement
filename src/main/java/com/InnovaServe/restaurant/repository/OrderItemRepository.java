@@ -10,4 +10,6 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
   List<OrderItem> findAllByTenantIdAndKotBatchId(UUID t, UUID batch);
 
   Optional<OrderItem> findByTenantIdAndOrderIdAndId(UUID t, UUID order, UUID id);
+
+  Optional<OrderItem> findByTenantIdAndId(UUID tenantId, UUID id);
 }

@@ -2,6 +2,7 @@ package com.InnovaServe.core.service;
 
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
+import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.restaurant.repository.DiningTableRepository;
 import com.InnovaServe.stay.repository.RoomRepository;
 import java.math.BigDecimal;
@@ -25,6 +26,7 @@ public class CoreReferenceService {
   private final RoomRepository rooms;
   private final DiningTableRepository tables;
   private final AuditService audit;
+  private final ModuleEntitlementService moduleEntitlements;
 
   public CoreReferenceService(
       TenantContext tenant,
@@ -33,7 +35,8 @@ public class CoreReferenceService {
       InvoiceRepository invoices,
       RoomRepository rooms,
       DiningTableRepository tables,
-      AuditService audit) {
+      AuditService audit,
+      ModuleEntitlementService moduleEntitlements) {
     this.tenant = tenant;
     this.qrCodes = qrCodes;
     this.creditNotes = creditNotes;
@@ -41,12 +44,15 @@ public class CoreReferenceService {
     this.rooms = rooms;
     this.tables = tables;
     this.audit = audit;
+    this.moduleEntitlements = moduleEntitlements;
   }
 
   @Transactional
   public QRCode createQRCode(String targetType, UUID targetId) {
     if (!Set.of("room", "dining_table").contains(targetType))
       throw new IllegalArgumentException("target_type must be room or dining_table");
+    moduleEntitlements.requireActive(
+        tenant.tenantId(), "room".equals(targetType) ? ModuleType.STAY : ModuleType.RESTAURANT);
     boolean exists =
         "room".equals(targetType)
             ? rooms.findByTenantIdAndId(tenant.tenantId(), targetId).isPresent()
@@ -68,7 +74,17 @@ public class CoreReferenceService {
 
   @Transactional(readOnly = true)
   public List<QRCode> qrCodes() {
-    return qrCodes.findAllByTenantIdOrderByCreatedAtDesc(tenant.tenantId());
+    UUID tenantId = tenant.tenantId();
+    return qrCodes.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+        .filter(
+            code ->
+                switch (code.getTargetType()) {
+                  case "room" -> moduleEntitlements.isActive(tenantId, ModuleType.STAY);
+                  case "dining_table" ->
+                      moduleEntitlements.isActive(tenantId, ModuleType.RESTAURANT);
+                  default -> false;
+                })
+        .toList();
   }
 
   @Transactional(readOnly = true)

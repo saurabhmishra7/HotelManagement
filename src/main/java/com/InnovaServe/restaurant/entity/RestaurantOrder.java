@@ -59,8 +59,16 @@ public class RestaurantOrder extends TenantEntity {
     return tableId;
   }
 
+  public String getOrderType() {
+    return orderType;
+  }
+
   public UUID getStayId() {
     return stayId;
+  }
+
+  public String getOrderSource() {
+    return orderSource;
   }
 
   public String getStatus() {
@@ -72,6 +80,8 @@ public class RestaurantOrder extends TenantEntity {
   }
 
   public void confirm(UUID user) {
+    if (!"open".equals(status) || !"pending".equals(confirmationStatus))
+      throw new IllegalStateException("Order is not awaiting guest confirmation");
     confirmationStatus = "confirmed";
     confirmedBy = user;
     confirmedAt = LocalDateTime.now();
@@ -79,5 +89,20 @@ public class RestaurantOrder extends TenantEntity {
 
   public void markBilled() {
     status = "billed";
+  }
+
+  public LocalDateTime getBillRequestedAt() {
+    return billRequestedAt;
+  }
+
+  public void requestBill() {
+    if (!"open".equals(status)) throw new IllegalStateException("Order is not open");
+    if (billRequestedAt == null) billRequestedAt = LocalDateTime.now();
+  }
+
+  public void associateStay(UUID stay) {
+    if (stayId != null && !stayId.equals(stay))
+      throw new IllegalStateException("Order is already associated with another stay");
+    stayId = stay;
   }
 }

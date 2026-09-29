@@ -65,6 +65,18 @@ public class OrderItem extends TenantEntity {
     kotBatchId = batch;
   }
 
+  public void markPreparing() {
+    if (!"sent".equals(status))
+      throw new IllegalStateException("Only sent order items can be marked preparing");
+    status = "preparing";
+  }
+
+  public void markServed() {
+    if (!"preparing".equals(status))
+      throw new IllegalStateException("Only preparing order items can be marked served");
+    status = "served";
+  }
+
   public void reject(String reason) {
     status = "cancelled";
     notes = reason;

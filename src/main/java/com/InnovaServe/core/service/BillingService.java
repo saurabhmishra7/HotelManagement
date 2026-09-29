@@ -2,6 +2,7 @@ package com.InnovaServe.core.service;
 
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
+import com.InnovaServe.core.security.ModuleType;
 import java.math.*;
 import java.time.*;
 import java.util.*;
@@ -18,6 +19,7 @@ public class BillingService {
   private final AccountRepository accounts;
   private final TaxRuleRepository taxes;
   private final CreditNoteRepository creditNotes;
+  private final ModuleEntitlementService moduleEntitlements;
 
   public BillingService(
       TenantContext t,
@@ -26,7 +28,8 @@ public class BillingService {
       PaymentRepository p,
       AccountRepository a,
       TaxRuleRepository tax,
-      CreditNoteRepository creditNotes) {
+      CreditNoteRepository creditNotes,
+      ModuleEntitlementService moduleEntitlements) {
     tenant = t;
     invoices = i;
     lines = l;
@@ -34,6 +37,7 @@ public class BillingService {
     accounts = a;
     taxes = tax;
     this.creditNotes = creditNotes;
+    this.moduleEntitlements = moduleEntitlements;
   }
 
   public List<TaxRule> taxes(String applies) {
@@ -42,6 +46,7 @@ public class BillingService {
         .filter(
             x ->
                 (applies == null || applies.equals(x.getAppliesTo()))
+                    && taxModuleEnabled(x.getAppliesTo())
                     && !x.getEffectiveFrom().isAfter(d)
                     && (x.getEffectiveTo() == null || !x.getEffectiveTo().isBefore(d)))
         .toList();
@@ -52,6 +57,7 @@ public class BillingService {
       String name, String applies, BigDecimal rate, boolean itc, LocalDate effective) {
     if (!Set.of("room", "restaurant", "other").contains(applies))
       throw new IllegalArgumentException("Invalid tax category");
+    requireTaxModule(applies);
     return taxes.save(new TaxRule(tenant.tenantId(), name, applies, rate, itc, effective));
   }
 
@@ -61,19 +67,29 @@ public class BillingService {
         taxes
             .findByTenantIdAndId(tenant.tenantId(), id)
             .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
+    requireTaxModule(rule.getAppliesTo());
     rule.supersede(to);
     return rule;
   }
 
   @Transactional
   public Account openAccount(String module, String type, UUID entity) {
+    if ("stay".equals(module))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    else if ("pos".equals(module))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
     return accounts.save(new Account(tenant.tenantId(), module, type, entity));
   }
 
   public Account account(UUID id) {
-    return accounts
+    Account account = accounts
         .findByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("Account not found"));
+    if ("stay".equals(account.getOpenedByModule()))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    else if ("pos".equals(account.getOpenedByModule()))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
+    return account;
   }
 
   public List<Invoice> invoicesForAccount(UUID id) {
@@ -88,12 +104,14 @@ public class BillingService {
         invoices
             .findByTenantIdAndId(tenant.tenantId(), invoiceId)
             .orElseThrow(() -> new NoSuchElementException("Invoice not found"));
+    requireInvoiceModule(invoice.getSourceModule());
     invoice.postToAccount(accountId);
   }
 
   @Transactional
   public InvoiceResult createInvoice(NewInvoice request) {
     UUID t = tenant.tenantId();
+    requireInvoiceModule(request.sourceModule());
     if (request.accountId() != null) {
       Account a = account(request.accountId());
       if (!"open".equals(a.getStatus())) throw new IllegalStateException("AccountClosed");
@@ -150,6 +168,35 @@ public class BillingService {
               c.tax,
               c.base.add(c.tax)));
     return new InvoiceResult(invoice, subtotal, taxTotal, subtotal.add(taxTotal));
+  }
+
+  private boolean taxModuleEnabled(String appliesTo) {
+    return switch (appliesTo) {
+      case "room" -> moduleEntitlements.isActive(tenant.tenantId(), ModuleType.STAY);
+      case "restaurant" ->
+          moduleEntitlements.isActive(tenant.tenantId(), ModuleType.RESTAURANT);
+      default -> true;
+    };
+  }
+
+  private void requireInvoiceModule(String sourceModule) {
+    if (sourceModule == null)
+      throw new IllegalArgumentException("Invoice source module is required");
+    switch (sourceModule) {
+      case "stay" -> moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+      case "restaurant" ->
+          moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
+      case "expense" -> moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.EXPENSE);
+      case "other" -> {}
+      default -> throw new IllegalArgumentException("Invalid invoice source module");
+    }
+  }
+
+  private void requireTaxModule(String appliesTo) {
+    if ("room".equals(appliesTo))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    else if ("restaurant".equals(appliesTo))
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
   }
 
   public Map<String, Object> invoice(UUID id) {
