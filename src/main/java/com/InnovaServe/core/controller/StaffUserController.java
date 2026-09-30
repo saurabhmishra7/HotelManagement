@@ -31,6 +31,11 @@ public class StaffUserController {
     return Map.of("token", tokens.issue(tenant, u.getId(), u.getRoleId()), "user", user(u));
   }
 
+  @GetMapping("/auth/me")
+  public Map<String, Object> currentUser() {
+    return service.currentUser();
+  }
+
   @PostMapping("/auth/password-reset/request")
   public ResponseEntity<Map<String, String>> requestPasswordReset(
       @RequestBody PasswordResetRequest request) {

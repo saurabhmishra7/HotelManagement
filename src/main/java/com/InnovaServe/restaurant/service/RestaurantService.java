@@ -219,9 +219,27 @@ public class RestaurantService {
         .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
   }
 
-  public List<OrderItem> itemsForBatch(UUID id) {
+  public List<Map<String, Object>> itemsForBatch(UUID id) {
     kot(id);
-    return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), id);
+    return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), id).stream()
+        .map(this::kitchenItem)
+        .toList();
+  }
+
+  private Map<String, Object> kitchenItem(OrderItem orderItem) {
+    Map<String, Object> item = new LinkedHashMap<>();
+    item.put("id", orderItem.getId());
+    item.put("menu_item_id", orderItem.getMenuItemId());
+    item.put(
+        "name",
+        items
+            .findByTenantIdAndId(tenant.tenantId(), orderItem.getMenuItemId())
+            .map(MenuItem::getName)
+            .orElse("Unavailable menu item"));
+    item.put("quantity", orderItem.getQuantity());
+    item.put("notes", orderItem.getNotes());
+    item.put("status", orderItem.getStatus());
+    return item;
   }
 
   public List<Map<String, Object>> pendingKots(String station) {
@@ -234,7 +252,7 @@ public class RestaurantService {
             batch ->
                 Map.<String, Object>of(
                     "batch", batch,
-                    "items", orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), batch.getId())))
+                    "items", itemsForBatch(batch.getId())))
         .toList();
   }
 

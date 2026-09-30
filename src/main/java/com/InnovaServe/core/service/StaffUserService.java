@@ -1,6 +1,7 @@
 package com.InnovaServe.core.service;
 
 import com.InnovaServe.core.entity.StaffUser;
+import com.InnovaServe.core.entity.StaffRole;
 import com.InnovaServe.core.repository.StaffRoleRepository;
 import com.InnovaServe.core.repository.StaffUserRepository;
 import java.util.*;
@@ -26,6 +27,27 @@ public class StaffUserService {
 
   public List<StaffUser> list() {
     return users.findAllByTenantIdOrderByName(tenant.tenantId());
+  }
+
+  public Map<String, Object> currentUser() {
+    UUID tenantId = tenant.tenantId();
+    StaffUser user =
+        users
+            .findByTenantIdAndId(tenantId, tenant.userId())
+            .orElseThrow(() -> new NoSuchElementException("User not found"));
+    StaffRole role =
+        user.getRoleId() == null
+            ? null
+            : roles.findByTenantIdAndId(tenantId, user.getRoleId()).orElse(null);
+    Map<String, Object> response = new LinkedHashMap<>();
+    response.put("id", user.getId());
+    response.put("name", user.getName());
+    response.put("phone", user.getPhone());
+    response.put("email", user.getEmail());
+    response.put("role_id", user.getRoleId());
+    response.put("role_name", role == null ? "STAFF" : role.getName());
+    response.put("permissions", role == null ? List.of() : role.getPermissions());
+    return response;
   }
 
   @Transactional
