@@ -91,6 +91,23 @@ public class ModuleEntitlementService {
     return activeModules(tenantId);
   }
 
+  /** Applies a paid subscription snapshot without deleting data or running manual switch-off guards. */
+  @Transactional
+  public List<String> applySubscription(UUID tenantId, Collection<String> selectedModules, Instant expiresAt) {
+    if (!tenants.existsById(tenantId)) throw new NoSuchElementException("Tenant not found");
+    Set<String> selected = Set.copyOf(selectedModules);
+    for (ModuleType module : ModuleType.values()) {
+      TenantModule entitlement =
+          modules
+              .findByTenantIdAndModule(tenantId, module.key())
+              .orElseGet(() -> new TenantModule(tenantId, module.key(), false));
+      if (selected.contains(module.key())) entitlement.grantUntil(expiresAt);
+      else entitlement.suspend();
+      modules.save(entitlement);
+    }
+    return activeModules(tenantId);
+  }
+
   public static class ModuleNotEntitledException extends RuntimeException {
     private final ModuleType module;
 

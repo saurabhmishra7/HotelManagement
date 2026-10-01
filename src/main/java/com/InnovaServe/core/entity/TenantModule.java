@@ -68,6 +68,16 @@ public class TenantModule {
     expiresAt = null;
   }
 
+  public void grantUntil(Instant expiresAt) {
+    if (!"active".equals(status)) activatedAt = Instant.now();
+    status = "active";
+    this.expiresAt = expiresAt;
+  }
+
+  public void suspend() {
+    status = "suspended";
+  }
+
   public void cancel() {
     status = "cancelled";
   }
