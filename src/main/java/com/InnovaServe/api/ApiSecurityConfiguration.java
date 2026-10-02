@@ -55,6 +55,8 @@ public class ApiSecurityConfiguration {
                     .permitAll()
                     .requestMatchers("/api/v1/tenants/lookup")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/public/plans")
+                    .permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/tenants")
                     .permitAll()
                     .requestMatchers(HttpMethod.PATCH, "/api/v1/tenants/*/modules")

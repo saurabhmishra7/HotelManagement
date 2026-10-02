@@ -8,6 +8,6 @@ import org.springframework.context.annotation.Configuration;
 public class ApiJacksonConfiguration {
   @Bean
   public ObjectMapper objectMapper() {
-    return new ObjectMapper();
+    return new ObjectMapper().findAndRegisterModules();
   }
 }

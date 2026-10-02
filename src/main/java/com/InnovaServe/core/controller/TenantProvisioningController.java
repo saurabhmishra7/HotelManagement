@@ -10,9 +10,11 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -66,19 +68,18 @@ public class TenantProvisioningController {
                 request.ownerEmail(),
                 request.ownerPassword(),
                 request.ownerPin(),
-                requestedModules(request.modules())));
+                requestedModules(request.modules()),
+                request.selectedPlanId(),
+                request.subscriptionRequestMessage()));
     Tenant tenant = result.tenant();
     StaffUser owner = result.owner();
     StaffRole role = result.ownerRole();
-    return Map.of(
-        "tenant_id",
-        tenant.getId(),
-        "tenant_name",
-        tenant.getName(),
-        "tenant_code",
-        tenant.getTenantCode(),
-        "modules",
-        modules.activeModules(tenant.getId()),
+    Map<String, Object> response = new LinkedHashMap<>();
+    response.put("tenant_id", tenant.getId());
+    response.put("tenant_name", tenant.getName());
+    response.put("tenant_code", tenant.getTenantCode());
+    response.put("modules", modules.activeModules(tenant.getId()));
+    response.put(
         "owner",
         Map.of(
             "id", owner.getId(),
@@ -86,11 +87,21 @@ public class TenantProvisioningController {
             "phone", owner.getPhone(),
             "role_id", role.getId(),
             "role", role.getName()));
+    if (result.subscriptionRequest() != null) {
+      response.put(
+          "subscription_request",
+          Map.of(
+              "id", result.subscriptionRequest().getId(),
+              "plan_id", result.subscriptionRequest().getRequestedPlanId(),
+              "request_type", result.subscriptionRequest().getRequestType(),
+              "status", result.subscriptionRequest().getStatus()));
+    }
+    return response;
   }
 
   @PatchMapping("/{tenantId}/modules")
   public Map<String, Object> replaceModules(
-      @PathVariable java.util.UUID tenantId,
+      @PathVariable UUID tenantId,
       @RequestHeader("X-Provisioning-Key") String suppliedKey,
       @RequestBody ModuleSelectionRequest request) {
     verifyProvisioningKey(suppliedKey);
@@ -110,8 +121,7 @@ public class TenantProvisioningController {
         || !MessageDigest.isEqual(
             provisioningKey.getBytes(StandardCharsets.UTF_8),
             suppliedKey.getBytes(StandardCharsets.UTF_8))) {
-      throw new org.springframework.security.access.AccessDeniedException(
-          "Invalid provisioning key");
+      throw new AccessDeniedException("Invalid provisioning key");
     }
   }
 
@@ -134,7 +144,9 @@ public class TenantProvisioningController {
       @JsonProperty("owner_email") String ownerEmail,
       @JsonProperty("owner_password") String ownerPassword,
       @JsonProperty("owner_pin") String ownerPin,
-      List<String> modules) {}
+      List<String> modules,
+      @JsonProperty("selected_plan_id") UUID selectedPlanId,
+      @JsonProperty("subscription_request_message") String subscriptionRequestMessage) {}
 
   public record ModuleSelectionRequest(List<String> modules) {}
 }

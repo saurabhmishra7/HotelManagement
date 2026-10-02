@@ -3,7 +3,6 @@ package com.InnovaServe.platform.service;
 import com.InnovaServe.core.entity.Tenant;
 import com.InnovaServe.core.repository.StaffUserRepository;
 import com.InnovaServe.core.repository.TenantRepository;
-import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.core.service.ModuleEntitlementService;
 import com.InnovaServe.core.service.TenantContext;
 import com.InnovaServe.platform.entity.Plan;

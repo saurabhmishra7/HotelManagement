@@ -43,11 +43,11 @@ public class PlatformTenantService {
   @Transactional(readOnly = true)
   public Map<String, Object> list(
       String search, String status, int page, int pageSize) {
-    String normalizedSearch = search == null || search.isBlank() ? null : search.trim();
+    String normalizedSearch = search == null || search.isBlank() ? "" : search.trim();
     String normalizedStatus = status == null || status.isBlank() || "all".equalsIgnoreCase(status)
-        ? null
+        ? ""
         : status.trim().toLowerCase(Locale.ROOT);
-    if (normalizedStatus != null
+    if (!normalizedStatus.isEmpty()
         && !Set.of("legacy", "scheduled", "active", "cancelling", "expired", "cancelled")
             .contains(normalizedStatus)) {
       throw new IllegalArgumentException("Unsupported tenant subscription status filter");
