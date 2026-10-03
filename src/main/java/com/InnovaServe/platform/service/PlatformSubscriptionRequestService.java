@@ -3,10 +3,11 @@ package com.InnovaServe.platform.service;
 import com.InnovaServe.core.entity.Tenant;
 import com.InnovaServe.core.repository.TenantRepository;
 import com.InnovaServe.core.repository.StaffUserRepository;
-import com.InnovaServe.platform.entity.PlatformAdmin;
 import com.InnovaServe.platform.entity.Plan;
 import com.InnovaServe.platform.entity.SubscriptionRequest;
+import com.InnovaServe.platform.entity.SubscriptionRequestProposal;
 import com.InnovaServe.platform.repository.PlanRepository;
+import com.InnovaServe.platform.repository.SubscriptionRequestProposalRepository;
 import com.InnovaServe.platform.repository.SubscriptionRequestRepository;
 import java.util.*;
 import java.math.BigDecimal;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PlatformSubscriptionRequestService {
   private final SubscriptionRequestRepository requests;
+  private final SubscriptionRequestProposalRepository proposals;
   private final TenantRepository tenants;
   private final PlanRepository plans;
   private final StaffUserRepository users;
@@ -23,11 +25,13 @@ public class PlatformSubscriptionRequestService {
 
   public PlatformSubscriptionRequestService(
       SubscriptionRequestRepository requests,
+      SubscriptionRequestProposalRepository proposals,
       TenantRepository tenants,
       PlanRepository plans,
       StaffUserRepository users,
       PlatformAuditService audit) {
     this.requests = requests;
+    this.proposals = proposals;
     this.tenants = tenants;
     this.plans = plans;
     this.users = users;
@@ -44,15 +48,22 @@ public class PlatformSubscriptionRequestService {
       throw new IllegalArgumentException("Proposed price must be a valid non-negative amount");
     if (note != null && note.length() > 1000)
       throw new IllegalArgumentException("Proposal note must be at most 1000 characters");
-    if (requests.existsByTenantIdAndStatusIn(tenantId, List.of("pending", "in_review", "awaiting_tenant")))
+    Optional<SubscriptionRequest> tenantInquiry = requests
+        .findFirstByTenantIdAndRequestTypeAndRequestedPlanIdAndStatusInOrderBySubmittedAtAsc(
+            tenantId, "negotiated_price", plan.getId(), List.of("pending", "in_review"))
+        .filter(row -> "tenant_price_discussion".equals(row.getTriggerType()));
+    if (tenantInquiry.isEmpty()
+        && requests.existsByTenantIdAndStatusIn(
+            tenantId, List.of("pending", "in_review", "awaiting_tenant")))
       throw new IllegalStateException("A subscription request is already open for this tenant");
-    UUID contactUser = users.findAllByTenantIdOrderByName(tenantId).stream()
-        .filter(user -> user.isActive()).findFirst()
-        .orElseThrow(() -> new IllegalStateException("Tenant has no active staff contact"))
-        .getId();
-    SubscriptionRequest request = new SubscriptionRequest(
-        tenantId, contactUser, null, plan.getId(), "negotiated_price",
-        note == null || note.isBlank() ? null : note.trim());
+    SubscriptionRequest request = tenantInquiry.orElseGet(() -> {
+      UUID contactUser = users.findAllByTenantIdOrderByName(tenantId).stream()
+          .filter(user -> user.isActive()).findFirst()
+          .orElseThrow(() -> new IllegalStateException("Tenant has no active staff contact"))
+          .getId();
+      return new SubscriptionRequest(tenantId, contactUser, null, plan.getId(),
+          "negotiated_price", null);
+    });
     request.propose("platform_negotiated_price", price, adminId);
     SubscriptionRequest saved = requests.save(request);
     audit.record(adminId, "SUBSCRIPTION_PRICE_PROPOSED", "subscription_request",
@@ -63,7 +74,7 @@ public class PlatformSubscriptionRequestService {
   @Transactional(readOnly = true)
   public List<Map<String, Object>> list(String status) {
     String normalized = status == null || status.isBlank() ? "pending" : status.trim().toLowerCase(Locale.ROOT);
-    if (!Set.of("pending", "in_review", "completed", "declined", "awaiting_tenant", "accepted").contains(normalized))
+    if (!Set.of("pending", "in_review", "completed", "declined", "awaiting_tenant", "accepted", "revoked").contains(normalized))
       throw new IllegalArgumentException("Unsupported request status");
     return requests.findAllByStatusOrderBySubmittedAtAsc(normalized).stream()
         .map(this::view).toList();
@@ -71,7 +82,7 @@ public class PlatformSubscriptionRequestService {
 
   @Transactional
   public Map<String, Object> update(UUID id, String status, String responseNote, UUID adminId) {
-    SubscriptionRequest request = requests.findById(id)
+    SubscriptionRequest request = requests.lockById(id)
         .orElseThrow(() -> new NoSuchElementException("Subscription request not found"));
     String next = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
     if (!Set.of("in_review", "completed", "declined").contains(next))
@@ -80,8 +91,15 @@ public class PlatformSubscriptionRequestService {
       throw new IllegalStateException("A resolved request cannot be changed");
     if (responseNote != null && responseNote.length() > 1000)
       throw new IllegalArgumentException("Response note must be at most 1000 characters");
+    if ("completed".equals(next) && "tenant_instant_change".equals(request.getTriggerType()))
+      throw new IllegalStateException(
+          "The tenant must accept a calculated proposal to activate this plan change");
     Map<String, Object> before = view(request);
     request.updateStatus(next, responseNote == null || responseNote.isBlank() ? null : responseNote.trim(), adminId);
+    if ("declined".equals(next)) {
+      proposals.findAllByRequestIdAndStatus(id, "offered")
+          .forEach(SubscriptionRequestProposal::supersede);
+    }
     Map<String, Object> after = view(request);
     audit.record(adminId, "SUBSCRIPTION_REQUEST_" + next.toUpperCase(Locale.ROOT),
         "subscription_request", id, before, after);

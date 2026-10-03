@@ -58,7 +58,8 @@ public class ApiSecurityConfiguration {
                     .requestMatchers(HttpMethod.GET, "/api/v1/public/plans")
                     .permitAll()
                     .requestMatchers("/api/v1/public/signup", "/api/v1/public/signup-mode",
-                        "/api/v1/public/signup/complete", "/api/v1/auth/email-verification/confirm")
+                        "/api/v1/public/signup/complete", "/api/v1/public/signup/demo-complete",
+                        "/api/v1/auth/email-verification/confirm")
                     .permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/tenants")
                     .permitAll()

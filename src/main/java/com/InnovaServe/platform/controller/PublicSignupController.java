@@ -3,6 +3,7 @@ package com.InnovaServe.platform.controller;
 import com.InnovaServe.platform.service.PublicSignupService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,4 +37,12 @@ public class PublicSignupController {
   public Map<String, Object> complete(@RequestBody PublicSignupService.PaymentCompletion request) {
     return signups.completePayment(request);
   }
+
+  @PostMapping("/signup/demo-complete")
+  public Map<String, Object> completeDemo(@RequestBody DemoCompletionRequest request) {
+    return signups.completeDemoPayment(request.signupIntentId());
+  }
+
+  public record DemoCompletionRequest(
+      @com.fasterxml.jackson.annotation.JsonProperty("signup_intent_id") UUID signupIntentId) {}
 }

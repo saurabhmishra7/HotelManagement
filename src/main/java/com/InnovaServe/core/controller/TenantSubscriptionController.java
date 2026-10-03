@@ -61,10 +61,18 @@ public class TenantSubscriptionController {
     return checkouts.complete(body);
   }
 
+  @PostMapping("/checkout/demo-complete")
+  @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_READ')")
+  public Map<String, Object> completeDemoCheckout(@RequestBody DemoCompletionRequest body) {
+    return checkouts.completeDemoPayment(body.checkoutId());
+  }
+
   public record Request(
       @JsonProperty("request_type") String requestType,
       @JsonProperty("plan_id") UUID planId,
       String message) {}
 
   public record PlanRequest(@JsonProperty("plan_id") UUID planId) {}
+
+  public record DemoCompletionRequest(@JsonProperty("checkout_id") UUID checkoutId) {}
 }

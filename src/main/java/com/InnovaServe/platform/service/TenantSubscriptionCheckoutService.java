@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -34,6 +35,7 @@ public class TenantSubscriptionCheckoutService {
   private final PlatformSubscriptionService subscriptionService;
   private final RazorpayPaymentService payments;
   private final Clock clock;
+  private final boolean demoPaymentsEnabled;
   private final TransactionTemplate transactions;
 
   public TenantSubscriptionCheckoutService(TenantContext context, PlanRepository plans,
@@ -41,7 +43,9 @@ public class TenantSubscriptionCheckoutService {
       TenantSubscriptionCheckoutRepository checkouts,
       SubscriptionRequestRepository requests,
       PlatformSubscriptionService subscriptionService, RazorpayPaymentService payments,
-      Clock clock, PlatformTransactionManager transactionManager) {
+      Clock clock,
+      @Value("${app.payments.demo-mode:false}") boolean demoPaymentsEnabled,
+      PlatformTransactionManager transactionManager) {
     this.context = context;
     this.plans = plans;
     this.subscriptions = subscriptions;
@@ -50,6 +54,7 @@ public class TenantSubscriptionCheckoutService {
     this.subscriptionService = subscriptionService;
     this.payments = payments;
     this.clock = clock;
+    this.demoPaymentsEnabled = demoPaymentsEnabled;
     this.transactions = new TransactionTemplate(transactionManager);
   }
 
@@ -73,7 +78,8 @@ public class TenantSubscriptionCheckoutService {
     if ("schedule".equals(normalized)
         && subscriptions.findFirstByTenantIdAndStatusOrderByStartsOnDesc(tenantId, "scheduled").isPresent())
       throw new IllegalStateException("A paid future subscription is already scheduled; contact the platform team to change it.");
-    if (!payments.isConfigured()) throw new RazorpayPaymentService.PaymentProviderUnavailableException();
+    if (!demoPaymentsEnabled && !payments.isConfigured())
+      throw new RazorpayPaymentService.PaymentProviderUnavailableException();
     return createCheckout(tenantId, userId, plan, null, normalized, plan.getPrice());
   }
 
@@ -111,24 +117,37 @@ public class TenantSubscriptionCheckoutService {
       requests.save(request);
       return created;
     }
-    if (!payments.isConfigured()) throw new RazorpayPaymentService.PaymentProviderUnavailableException();
+    if (!demoPaymentsEnabled && !payments.isConfigured())
+      throw new RazorpayPaymentService.PaymentProviderUnavailableException();
     return createCheckout(tenantId, userId, plan, requestId, action, request.getProposedPrice());
   }
 
   private Map<String, Object> createCheckout(UUID tenantId, UUID userId, Plan plan,
       UUID requestId, String action, java.math.BigDecimal amount) {
-    String receipt = "sub-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
-    RazorpayPaymentService.Order order = payments.createOrder(amount, plan.getCurrency(), receipt);
+    String orderId;
+    String keyId = null;
+    long displayAmount;
+    if (demoPaymentsEnabled) {
+      orderId = "demo-subscription-" + UUID.randomUUID();
+      displayAmount = amount.movePointRight(2).longValueExact();
+    } else {
+      String receipt = "sub-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+      RazorpayPaymentService.Order order = payments.createOrder(amount, plan.getCurrency(), receipt);
+      orderId = order.orderId();
+      keyId = order.keyId();
+      displayAmount = order.amountMinor();
+    }
     TenantSubscriptionCheckout checkout = checkouts.save(new TenantSubscriptionCheckout(
         tenantId, userId, plan.getId(), requestId, action, amount, plan.getCurrency(),
-        order.orderId(), Instant.now(clock).plus(Duration.ofMinutes(20))));
+        orderId, Instant.now(clock).plus(Duration.ofMinutes(20))));
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("checkout_id", checkout.getId());
     result.put("action", action);
-    result.put("key_id", order.keyId());
-    result.put("order_id", order.orderId());
-    result.put("amount", order.amountMinor());
-    result.put("currency", order.currency());
+    result.put("demo_payment", demoPaymentsEnabled);
+    if (keyId != null) result.put("key_id", keyId);
+    result.put("order_id", orderId);
+    result.put("amount", demoPaymentsEnabled ? amount : displayAmount);
+    result.put("currency", plan.getCurrency());
     result.put("plan", PlatformPlanService.snapshot(plan));
     result.put("proposed_price", amount);
     return result;
@@ -141,25 +160,36 @@ public class TenantSubscriptionCheckoutService {
       throw new NoSuchElementException("Subscription checkout not found");
     if (!checkout.getPaymentOrderId().equals(payment.orderId()))
       throw new IllegalArgumentException("Payment order does not match this checkout");
-    if ("completed".equals(checkout.getStatus())) return Map.of("status", "completed");
+    if ("completed".equals(checkout.getStatus()))
+      return Map.of("status", "completed", "action", checkout.getAction());
     if (!"pending".equals(checkout.getStatus()) || !checkout.getExpiresAt().isAfter(Instant.now(clock)))
       throw new IllegalArgumentException("Subscription checkout has expired");
     payments.requireCapturedPayment(checkout.getPaymentOrderId(), payment.paymentId(),
         payment.signature(), checkout.getAmount(), checkout.getCurrency());
-    return transactions.execute(status -> finish(payment.checkoutId()));
+    return transactions.execute(status -> finish(payment.checkoutId(), false));
   }
 
-  private Map<String, Object> finish(UUID checkoutId) {
+  public Map<String, Object> completeDemoPayment(UUID checkoutId) {
+    if (!demoPaymentsEnabled)
+      throw new IllegalStateException("Demo payment confirmation is disabled");
+    return transactions.execute(status -> finish(checkoutId, true));
+  }
+
+  private Map<String, Object> finish(UUID checkoutId, boolean demo) {
     TenantSubscriptionCheckout checkout = checkouts.lockById(checkoutId)
         .orElseThrow(() -> new NoSuchElementException("Subscription checkout not found"));
-    if ("completed".equals(checkout.getStatus())) return Map.of("status", "completed");
+    if ("completed".equals(checkout.getStatus()))
+      return Map.of("status", "completed", "action", checkout.getAction());
     if (!checkout.getTenantId().equals(context.tenantId())
-        || !checkout.getExpiresAt().isAfter(Instant.now(clock)))
+        || !checkout.getExpiresAt().isAfter(Instant.now(clock))
+        || (demo && !checkout.getPaymentOrderId().startsWith("demo-subscription-"))
+        || (!demo && checkout.getPaymentOrderId().startsWith("demo-subscription-")))
       throw new IllegalArgumentException("Subscription checkout has expired");
     Plan plan = plans.findById(checkout.getPlanId()).filter(Plan::isActive)
         .orElseThrow(() -> new IllegalStateException("Selected plan is no longer active"));
-    Map<String, Object> subscription = subscriptionService.activateTenantPlan(
-        checkout.getTenantId(), plan, checkout.getAmount(), "schedule".equals(checkout.getAction()));
+    Map<String, Object> subscription = new LinkedHashMap<>(subscriptionService.activateTenantPlan(
+        checkout.getTenantId(), plan, checkout.getAmount(), "schedule".equals(checkout.getAction())));
+    subscription.put("action", checkout.getAction());
     if (!checkout.complete(Instant.now(clock)))
       throw new IllegalArgumentException("Subscription checkout has expired");
     checkouts.save(checkout);

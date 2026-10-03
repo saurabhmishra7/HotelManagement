@@ -28,6 +28,7 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ public class PublicSignupService {
   private final PublicSignupRateLimiter rateLimiter;
   private final EmailVerificationService verification;
   private final Clock clock;
+  private final boolean demoPaymentsEnabled;
   private final TransactionTemplate transactions;
 
   public PublicSignupService(
@@ -63,6 +65,7 @@ public class PublicSignupService {
       PublicSignupRateLimiter rateLimiter,
       EmailVerificationService verification,
       Clock clock,
+      @Value("${app.payments.demo-mode:false}") boolean demoPaymentsEnabled,
       PlatformTransactionManager transactionManager) {
     this.settings = settings;
     this.plans = plans;
@@ -76,6 +79,7 @@ public class PublicSignupService {
     this.rateLimiter = rateLimiter;
     this.verification = verification;
     this.clock = clock;
+    this.demoPaymentsEnabled = demoPaymentsEnabled;
     this.transactions = new TransactionTemplate(transactionManager);
   }
 
@@ -127,6 +131,26 @@ public class PublicSignupService {
       verification.send(owner, tenant.getTenantCode());
       return signupResult(tenant, owner, "standard", "active", plan);
     }
+    if (demoPaymentsEnabled) {
+      String demoOrderId = "demo-signup-" + UUID.randomUUID();
+      PublicSignupIntent intent = intents.save(new PublicSignupIntent(
+          request.name().trim(), blankToNull(request.gstin()), blankToNull(request.address()),
+          request.ownerName().trim(), request.ownerPhone().trim(), email,
+          passwords.encode(request.ownerPassword()), passwords.encode(request.ownerPin()),
+          plan.getId(), plan.getPrice(), plan.getCurrency(), demoOrderId,
+          Instant.now(clock).plus(Duration.ofMinutes(20))));
+      Map<String, Object> result = new LinkedHashMap<>();
+      result.put("mode", "standard");
+      result.put("signup_status", "payment_required");
+      result.put("demo_payment", true);
+      result.put("signup_intent_id", intent.getId());
+      result.put("amount", plan.getPrice());
+      result.put("currency", plan.getCurrency());
+      result.put("owner_name", request.ownerName().trim());
+      result.put("owner_email", email);
+      result.put("property_name", request.name().trim());
+      return result;
+    }
     if (!payments.isConfigured())
       throw new RazorpayPaymentService.PaymentProviderUnavailableException();
 
@@ -165,11 +189,20 @@ public class PublicSignupService {
       throw new IllegalStateException("This email already owns a property");
     payments.requireCapturedPayment(intent.getPaymentOrderId(), request.paymentId(),
         request.signature(), intent.getAmount(), intent.getCurrency());
-    return transactions.execute(status -> completePaidSignup(request.signupIntentId()));
+    return transactions.execute(status -> finishSignup(request.signupIntentId()));
   }
 
-  @Transactional
-  protected Map<String, Object> completePaidSignup(UUID intentId) {
+  public Map<String, Object> completeDemoPayment(UUID intentId) {
+    if (!demoPaymentsEnabled)
+      throw new IllegalStateException("Demo payment confirmation is disabled");
+    PublicSignupIntent intent = intents.findById(intentId)
+        .orElseThrow(() -> new NoSuchElementException("Signup checkout not found"));
+    if (!intent.getPaymentOrderId().startsWith("demo-signup-"))
+      throw new IllegalArgumentException("This signup is not using demo payment");
+    return transactions.execute(status -> finishSignup(intentId));
+  }
+
+  private Map<String, Object> finishSignup(UUID intentId) {
     PublicSignupIntent intent = intents.lockById(intentId)
         .orElseThrow(() -> new NoSuchElementException("Signup checkout not found"));
     if ("completed".equals(intent.getStatus())) return completedResult(intent.getTenantId());

@@ -75,6 +75,9 @@ public class SubscriptionRequest {
     this.requestedPlanId = requestedPlanId;
     this.requestType = requestType;
     this.message = message;
+    if ("tenant_instant_change".equals(requestType)) {
+      this.triggerType = "tenant_instant_change";
+    }
   }
 
   public UUID getId() {
@@ -142,10 +145,6 @@ public class SubscriptionRequest {
         : null;
   }
 
-  public void setStatus(String status) {
-    this.status = status;
-  }
-
   public void propose(String triggerType, java.math.BigDecimal price, UUID adminId) {
     this.triggerType = triggerType;
     this.proposedPrice = price;
@@ -153,8 +152,22 @@ public class SubscriptionRequest {
     this.status = "awaiting_tenant";
   }
 
+  public void markTenantPriceDiscussion() {
+    this.triggerType = "tenant_price_discussion";
+  }
+
   public void acceptByTenant() {
     this.status = "accepted";
+    this.resolvedAt = Instant.now();
+  }
+
+  public void completeByTenant() {
+    this.status = "completed";
+    this.resolvedAt = Instant.now();
+  }
+
+  public void revokeByTenant() {
+    this.status = "revoked";
     this.resolvedAt = Instant.now();
   }
 

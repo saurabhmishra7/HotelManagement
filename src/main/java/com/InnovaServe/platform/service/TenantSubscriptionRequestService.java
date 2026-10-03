@@ -86,8 +86,8 @@ public class TenantSubscriptionRequestService {
     users.findByTenantIdAndId(tenantId, userId)
         .orElseThrow(() -> new IllegalStateException("Authenticated user does not belong to this tenant"));
     String requestType = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
-    if (!Set.of("tenant_instant_change").contains(requestType))
-      throw new IllegalArgumentException("Only an instant mid-cycle plan change can be sent for review");
+    if (!Set.of("tenant_instant_change", "negotiated_price").contains(requestType))
+      throw new IllegalArgumentException("Unsupported subscription request type");
     if (message != null && message.length() > 1000)
       throw new IllegalArgumentException("Message must be at most 1000 characters");
     if (requests.existsByTenantIdAndStatusIn(tenantId, OPEN_STATUSES))
@@ -100,8 +100,26 @@ public class TenantSubscriptionRequestService {
         .filter(row -> !row.getExpiresOn().isBefore(today))
         .findFirst().orElse(null);
 
+    if ("negotiated_price".equals(requestType)) {
+      if (planId == null) throw new IllegalArgumentException("plan_id is required");
+      UUID targetPlanId = planId;
+      Plan target = plans.findById(targetPlanId).filter(Plan::isActive)
+          .orElseThrow(() -> new NoSuchElementException("Active plan not found"));
+      if (!"annual".equals(target.getDuration()))
+        throw new IllegalArgumentException("Price discussion requests are available for annual plans");
+      SubscriptionRequest negotiation = new SubscriptionRequest(
+          tenantId, userId, current == null ? null : current.getId(), target.getId(),
+          requestType, message == null || message.isBlank() ? null : message.trim());
+      negotiation.markTenantPriceDiscussion();
+      return requestView(requests.save(negotiation));
+    }
+
     if (current == null || current.isTrial())
       throw new IllegalStateException("An instant-change request requires an active paid subscription");
+    if (subscriptions.findFirstByTenantIdAndStatusOrderByStartsOnDesc(tenantId, "scheduled")
+        .isPresent())
+      throw new IllegalStateException(
+          "Cancel the already scheduled plan before requesting an immediate change");
 
     UUID targetPlanId = planId;
     if (targetPlanId == null) throw new IllegalArgumentException("plan_id is required for this request");
