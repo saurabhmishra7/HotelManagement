@@ -39,10 +39,13 @@ public class TenantSubscription {
   @Column(nullable = false, length = 20)
   private String status;
 
+  @Column(name = "is_trial", nullable = false)
+  private boolean trial;
+
   @Column(name = "cancelled_at")
   private Instant cancelledAt;
 
-  @Column(name = "created_by", nullable = false)
+  @Column(name = "created_by")
   private UUID createdBy;
 
   @Column(name = "created_at", insertable = false, updatable = false)
@@ -68,7 +71,8 @@ public class TenantSubscription {
       LocalDate expiresOn,
       String status,
       UUID createdBy,
-      Set<String> modules) {
+      Set<String> modules,
+      boolean trial) {
     this.tenantId = tenantId;
     this.planId = planId;
     this.planPriceAtTime = planPriceAtTime;
@@ -77,6 +81,7 @@ public class TenantSubscription {
     this.startsOn = startsOn;
     this.expiresOn = expiresOn;
     this.status = status;
+    this.trial = trial;
     this.createdBy = createdBy;
     this.modules = new HashSet<>(modules);
   }
@@ -115,6 +120,10 @@ public class TenantSubscription {
 
   public String getStatus() {
     return status;
+  }
+
+  public boolean isTrial() {
+    return trial;
   }
 
   public Instant getCancelledAt() {

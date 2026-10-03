@@ -10,7 +10,8 @@ public enum PlatformRole {
           PlatformPermission.PLANS_MANAGE,
           PlatformPermission.SUBSCRIPTIONS_MANAGE,
           PlatformPermission.ADMINS_MANAGE,
-          PlatformPermission.AUDIT_READ)),
+          PlatformPermission.AUDIT_READ,
+          PlatformPermission.SETTINGS_MANAGE)),
   TENANT_MANAGER(
       Set.of(
           PlatformPermission.TENANTS_READ,

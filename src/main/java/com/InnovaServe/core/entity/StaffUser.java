@@ -45,6 +45,15 @@ public class StaffUser {
   @Column(name = "password_reset_requested_at")
   private Instant passwordResetRequestedAt;
 
+  @Column(name = "email_verification_token_hash", length = 64)
+  private String emailVerificationTokenHash;
+
+  @Column(name = "email_verification_expires_at")
+  private Instant emailVerificationExpiresAt;
+
+  @Column(name = "email_verified_at")
+  private Instant emailVerifiedAt;
+
   @Column(name = "role_id")
   private UUID roleId;
 
@@ -107,6 +116,35 @@ public class StaffUser {
 
   public String getPinHash() {
     return pinHash;
+  }
+
+  public String getEmailVerificationTokenHash() {
+    return emailVerificationTokenHash;
+  }
+
+  public Instant getEmailVerificationExpiresAt() {
+    return emailVerificationExpiresAt;
+  }
+
+  public Instant getEmailVerifiedAt() {
+    return emailVerifiedAt;
+  }
+
+  public void issueEmailVerification(String tokenHash, Instant expiresAt) {
+    emailVerificationTokenHash = tokenHash;
+    emailVerificationExpiresAt = expiresAt;
+  }
+
+  public boolean verifyEmail(String tokenHash, Instant now) {
+    if (emailVerifiedAt != null
+        || emailVerificationTokenHash == null
+        || !emailVerificationTokenHash.equals(tokenHash)
+        || emailVerificationExpiresAt == null
+        || !emailVerificationExpiresAt.isAfter(now)) return false;
+    emailVerifiedAt = now;
+    emailVerificationTokenHash = null;
+    emailVerificationExpiresAt = null;
+    return true;
   }
 
   public boolean issuePasswordReset(String tokenHash, Instant expiresAt, Instant now) {

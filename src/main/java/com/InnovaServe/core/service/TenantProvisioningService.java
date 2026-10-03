@@ -12,6 +12,7 @@ import com.InnovaServe.platform.entity.Plan;
 import com.InnovaServe.platform.entity.SubscriptionRequest;
 import com.InnovaServe.platform.repository.PlanRepository;
 import com.InnovaServe.platform.repository.SubscriptionRequestRepository;
+import com.InnovaServe.platform.repository.PublicSignupIntentRepository;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -30,6 +31,7 @@ public class TenantProvisioningService {
   private final ModuleEntitlementService modules;
   private final PlanRepository plans;
   private final SubscriptionRequestRepository subscriptionRequests;
+  private final PublicSignupIntentRepository signupIntents;
 
   public TenantProvisioningService(
       TenantRepository tenants,
@@ -38,7 +40,8 @@ public class TenantProvisioningService {
       PasswordEncoder passwordEncoder,
       ModuleEntitlementService modules,
       PlanRepository plans,
-      SubscriptionRequestRepository subscriptionRequests) {
+      SubscriptionRequestRepository subscriptionRequests,
+      PublicSignupIntentRepository signupIntents) {
     this.tenants = tenants;
     this.roles = roles;
     this.users = users;
@@ -46,10 +49,16 @@ public class TenantProvisioningService {
     this.modules = modules;
     this.plans = plans;
     this.subscriptionRequests = subscriptionRequests;
+    this.signupIntents = signupIntents;
   }
 
   @Transactional
   public ProvisionedTenant create(ProvisionTenant request) {
+    String primaryEmail = request.ownerEmail() == null ? null : request.ownerEmail().trim();
+    if (primaryEmail != null && !primaryEmail.isBlank()
+        && (users.existsOwnerEmailIgnoreCase(primaryEmail)
+            || signupIntents.existsByOwnerEmailIgnoreCaseAndStatus(primaryEmail, "pending")))
+      throw new IllegalStateException("This email already owns a property or has a signup in progress");
     Plan selectedPlan = null;
     if (request.selectedPlanId() != null) {
       if (request.subscriptionRequestMessage() != null
@@ -68,8 +77,9 @@ public class TenantProvisioningService {
         throw new IllegalArgumentException("Selected modules must match the chosen plan");
       }
     }
-    Tenant tenant =
-        tenants.save(new Tenant(request.name().trim(), request.gstin(), request.address()));
+    Tenant tenantEntity = new Tenant(request.name().trim(), request.gstin(), request.address());
+    tenantEntity.setPrimaryOwnerEmail(request.ownerEmail());
+    Tenant tenant = tenants.save(tenantEntity);
     // Signup always selects a plan; the no-plan branch remains for existing
     // provisioning-key operator integrations. Paid access waits for confirmation.
     modules.replaceModules(tenant.getId(), selectedPlan == null ? request.modules() : Set.of());

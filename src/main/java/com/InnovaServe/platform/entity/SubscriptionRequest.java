@@ -50,6 +50,15 @@ public class SubscriptionRequest {
   @Column(name = "resolved_at")
   private Instant resolvedAt;
 
+  @Column(name = "trigger_type", nullable = false, length = 40)
+  private String triggerType = "tenant_request";
+
+  @Column(name = "proposed_price", precision = 10, scale = 2)
+  private java.math.BigDecimal proposedPrice;
+
+  @Column(name = "proposed_by")
+  private UUID proposedBy;
+
   protected SubscriptionRequest() {}
 
   public SubscriptionRequest(
@@ -120,6 +129,10 @@ public class SubscriptionRequest {
     return resolvedAt;
   }
 
+  public String getTriggerType() { return triggerType; }
+  public java.math.BigDecimal getProposedPrice() { return proposedPrice; }
+  public UUID getProposedBy() { return proposedBy; }
+
   public void updateStatus(String status, String responseNote, UUID adminId) {
     this.status = status;
     this.responseNote = responseNote;
@@ -131,6 +144,18 @@ public class SubscriptionRequest {
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  public void propose(String triggerType, java.math.BigDecimal price, UUID adminId) {
+    this.triggerType = triggerType;
+    this.proposedPrice = price;
+    this.proposedBy = adminId;
+    this.status = "awaiting_tenant";
+  }
+
+  public void acceptByTenant() {
+    this.status = "accepted";
+    this.resolvedAt = Instant.now();
   }
 
   @PreUpdate

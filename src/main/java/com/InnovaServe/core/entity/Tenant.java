@@ -28,6 +28,9 @@ public class Tenant {
   @Column(columnDefinition = "text")
   private String address;
 
+  @Column(name = "primary_owner_email", length = 150)
+  private String primaryOwnerEmail;
+
   @Column(name = "created_at", insertable = false, updatable = false)
   private LocalDateTime createdAt;
 
@@ -58,6 +61,12 @@ public class Tenant {
 
   public String getAddress() {
     return address;
+  }
+
+  public String getPrimaryOwnerEmail() { return primaryOwnerEmail; }
+
+  public void setPrimaryOwnerEmail(String email) {
+    this.primaryOwnerEmail = email == null ? null : email.trim().toLowerCase(java.util.Locale.ROOT);
   }
 
   public LocalDateTime getCreatedAt() {

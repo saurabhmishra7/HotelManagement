@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import com.InnovaServe.core.service.ModuleEntitlementService.ModuleNotEntitledException;
 import com.InnovaServe.core.service.PasswordResetService.PasswordResetUnavailableException;
+import com.InnovaServe.platform.service.PublicSignupRateLimiter.SignupRateLimitException;
+import com.InnovaServe.platform.service.RazorpayPaymentService.PaymentProviderUnavailableException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -39,6 +41,18 @@ public class ApiExceptionHandler {
                 ex.getMessage(),
                 "details",
                 Map.of()));
+  }
+
+  @ExceptionHandler(PaymentProviderUnavailableException.class)
+  public ResponseEntity<?> paymentUnavailable(PaymentProviderUnavailableException ex) {
+    return ResponseEntity.status(503).body(Map.of("error", "PaymentUnavailable",
+        "message", ex.getMessage(), "details", Map.of()));
+  }
+
+  @ExceptionHandler(SignupRateLimitException.class)
+  public ResponseEntity<?> rateLimited(SignupRateLimitException ex) {
+    return ResponseEntity.status(429).body(Map.of("error", "SignupRateLimited",
+        "message", ex.getMessage(), "details", Map.of()));
   }
 
   @ExceptionHandler(MaxUploadSizeExceededException.class)

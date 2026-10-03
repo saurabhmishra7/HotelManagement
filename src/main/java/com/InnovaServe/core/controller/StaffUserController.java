@@ -3,6 +3,7 @@ package com.InnovaServe.core.controller;
 import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.service.StaffUserService;
 import com.InnovaServe.core.service.PasswordResetService;
+import com.InnovaServe.core.service.EmailVerificationService;
 import com.InnovaServe.core.service.TokenService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.*;
@@ -16,12 +17,15 @@ public class StaffUserController {
   private final StaffUserService service;
   private final TokenService tokens;
   private final PasswordResetService passwordResets;
+  private final EmailVerificationService emailVerifications;
 
   public StaffUserController(
-      StaffUserService s, TokenService tokens, PasswordResetService passwordResets) {
+      StaffUserService s, TokenService tokens, PasswordResetService passwordResets,
+      EmailVerificationService emailVerifications) {
     service = s;
     this.tokens = tokens;
     this.passwordResets = passwordResets;
+    this.emailVerifications = emailVerifications;
   }
 
   @PostMapping("/auth/login")
@@ -48,6 +52,12 @@ public class StaffUserController {
   public Map<String, String> confirmPasswordReset(@RequestBody PasswordResetConfirm request) {
     passwordResets.confirm(request.tenantCode(), request.token(), request.newPassword());
     return Map.of("message", "Password has been reset; please log in again");
+  }
+
+  @PostMapping("/auth/email-verification/confirm")
+  public Map<String, String> confirmEmail(@RequestBody EmailVerificationConfirm request) {
+    emailVerifications.confirm(request.token());
+    return Map.of("message", "Email verified");
   }
 
   @GetMapping("/users")
@@ -99,6 +109,8 @@ public class StaffUserController {
       @JsonProperty("tenant_code") String tenantCode,
       String token,
       @JsonProperty("new_password") String newPassword) {}
+
+  public record EmailVerificationConfirm(String token) {}
 
   public record CreateUser(
       String name,

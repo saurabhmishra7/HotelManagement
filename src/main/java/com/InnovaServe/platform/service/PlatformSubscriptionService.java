@@ -95,7 +95,8 @@ public class PlatformSubscriptionService {
                 expiresOn,
                 status,
                 adminId,
-                plan.getModules()));
+                plan.getModules(),
+                false));
     if ("active".equals(status)) {
       entitlements.applySubscription(tenantId, created.getModules(), expiresAt(created.getExpiresOn()));
     }
@@ -106,6 +107,74 @@ public class PlatformSubscriptionService {
         created.getId(),
         null,
         view(created, plan));
+    return view(created, plan);
+  }
+
+  @Transactional
+  public TenantSubscription activateSignup(
+      UUID tenantId, Plan plan, BigDecimal amountPaid, boolean trial, int trialDays) {
+    LocalDate startsOn = LocalDate.now(clock);
+    LocalDate expiresOn = trial
+        ? startsOn.plusDays(trialDays - 1L)
+        : expiryDate(startsOn, plan.getDuration());
+    TenantSubscription subscription = subscriptions.save(
+        new TenantSubscription(
+            tenantId,
+            plan.getId(),
+            plan.getPrice(),
+            amountPaid,
+            null,
+            startsOn,
+            expiresOn,
+            "active",
+            null,
+            plan.getModules(),
+            trial));
+    entitlements.applySubscription(
+        tenantId, subscription.getModules(), expiresAt(subscription.getExpiresOn()));
+    audit.recordSystem(
+        trial ? "TRIAL_SUBSCRIPTION_STARTED" : "PAID_SUBSCRIPTION_STARTED",
+        "tenant_subscription",
+        subscription.getId(),
+        null,
+        view(subscription, plan));
+    return subscription;
+  }
+
+  @Transactional
+  public Map<String, Object> activateTenantPlan(UUID tenantId, Plan plan, BigDecimal paid,
+      boolean schedule) {
+    tenants.lockById(tenantId).orElseThrow(() -> new NoSuchElementException("Tenant not found"));
+    LocalDate today = LocalDate.now(clock);
+    List<TenantSubscription> rows = subscriptions.lockCurrentByTenant(tenantId);
+    TenantSubscription current = rows.stream()
+        .filter(row -> !row.getExpiresOn().isBefore(today)).findFirst().orElse(null);
+    for (TenantSubscription row : rows) {
+      if (row.getExpiresOn().isBefore(today)) {
+        row.expire();
+        subscriptions.save(row);
+      }
+    }
+    if (!schedule && current != null && !current.isTrial())
+      throw new IllegalStateException("An active paid plan cannot be replaced instantly; schedule it or request a reviewed change");
+    if (!schedule && current != null) {
+      current.cancel();
+      subscriptions.save(current);
+    }
+
+    if (schedule && subscriptions.findFirstByTenantIdAndStatusOrderByStartsOnDesc(tenantId, "scheduled").isPresent())
+      throw new IllegalStateException("A paid future subscription is already scheduled; contact the platform team to change it.");
+    LocalDate startsOn = schedule && current != null
+        ? current.getExpiresOn().plusDays(1) : today;
+    LocalDate expiresOn = expiryDate(startsOn, plan.getDuration());
+    String status = startsOn.isAfter(today) ? "scheduled" : "active";
+    TenantSubscription created = subscriptions.save(new TenantSubscription(
+        tenantId, plan.getId(), plan.getPrice(), paid, null, startsOn, expiresOn,
+        status, null, plan.getModules(), false));
+    if ("active".equals(status))
+      entitlements.applySubscription(tenantId, created.getModules(), expiresAt(expiresOn));
+    audit.recordSystem(schedule ? "TENANT_SUBSCRIPTION_SCHEDULED" : "TENANT_SUBSCRIPTION_ACTIVATED",
+        "tenant_subscription", created.getId(), null, view(created, plan));
     return view(created, plan);
   }
 
@@ -218,6 +287,7 @@ public class PlatformSubscriptionService {
     result.put("starts_on", subscription.getStartsOn());
     result.put("expires_on", subscription.getExpiresOn());
     result.put("status", subscription.getStatus());
+    result.put("is_trial", subscription.isTrial());
     result.put("cancelled_at", subscription.getCancelledAt());
     result.put("modules", subscription.getModules().stream().sorted().toList());
     return result;

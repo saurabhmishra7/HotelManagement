@@ -6,5 +6,6 @@ public enum PlatformPermission {
   PLANS_MANAGE,
   SUBSCRIPTIONS_MANAGE,
   ADMINS_MANAGE,
-  AUDIT_READ
+  AUDIT_READ,
+  SETTINGS_MANAGE
 }

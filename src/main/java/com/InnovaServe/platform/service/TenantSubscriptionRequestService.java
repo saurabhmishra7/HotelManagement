@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TenantSubscriptionRequestService {
-  private static final List<String> OPEN_STATUSES = List.of("pending", "in_review");
+  private static final List<String> OPEN_STATUSES = List.of("pending", "in_review", "awaiting_tenant");
 
   private final TenantContext tenantContext;
   private final TenantRepository tenants;
@@ -86,8 +86,8 @@ public class TenantSubscriptionRequestService {
     users.findByTenantIdAndId(tenantId, userId)
         .orElseThrow(() -> new IllegalStateException("Authenticated user does not belong to this tenant"));
     String requestType = type == null ? "" : type.trim().toLowerCase(Locale.ROOT);
-    if (!Set.of("renewal", "upgrade", "new_subscription").contains(requestType))
-      throw new IllegalArgumentException("Request type must be renewal, upgrade, or new_subscription");
+    if (!Set.of("tenant_instant_change").contains(requestType))
+      throw new IllegalArgumentException("Only an instant mid-cycle plan change can be sent for review");
     if (message != null && message.length() > 1000)
       throw new IllegalArgumentException("Message must be at most 1000 characters");
     if (requests.existsByTenantIdAndStatusIn(tenantId, OPEN_STATUSES))
@@ -100,32 +100,18 @@ public class TenantSubscriptionRequestService {
         .filter(row -> !row.getExpiresOn().isBefore(today))
         .findFirst().orElse(null);
 
-    if ("renewal".equals(requestType) && current == null)
-      throw new IllegalStateException("There is no current subscription to renew; request a new subscription instead");
-    if ("upgrade".equals(requestType) && current == null)
-      throw new IllegalStateException("There is no current subscription to upgrade; request a new subscription instead");
-    if ("new_subscription".equals(requestType) && current != null)
-      throw new IllegalStateException("A current subscription exists; request a renewal or upgrade instead");
+    if (current == null || current.isTrial())
+      throw new IllegalStateException("An instant-change request requires an active paid subscription");
 
     UUID targetPlanId = planId;
-    if ("renewal".equals(requestType)) {
-      Plan currentPlan = plans.findById(current.getPlanId()).orElse(null);
-      if (currentPlan == null) throw new NoSuchElementException("Current subscription plan not found");
-      targetPlanId = plans.findAllByActiveTrueOrderByNameAsc().stream()
-          .filter(candidate -> candidate.getFamilyId().equals(currentPlan.getFamilyId()))
-          .map(Plan::getId)
-          .findFirst()
-          .orElseThrow(() -> new IllegalStateException(
-              "This plan is no longer offered; request a plan change instead"));
-    }
     if (targetPlanId == null) throw new IllegalArgumentException("plan_id is required for this request");
     Plan target = plans.findById(targetPlanId)
         .filter(Plan::isActive).orElseThrow(() -> new NoSuchElementException("Active plan not found"));
-    if ("upgrade".equals(requestType) && target.getId().equals(current.getPlanId()))
+    if (target.getId().equals(current.getPlanId()))
       throw new IllegalArgumentException("Choose a different plan to request an upgrade");
 
     SubscriptionRequest saved = requests.save(new SubscriptionRequest(
-        tenantId, userId, current == null ? null : current.getId(), target.getId(), requestType,
+        tenantId, userId, current.getId(), target.getId(), requestType,
         message == null || message.isBlank() ? null : message.trim()));
     return requestView(saved);
   }
@@ -143,7 +129,9 @@ public class TenantSubscriptionRequestService {
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("id", request.getId());
     result.put("request_type", request.getRequestType());
+    result.put("trigger_type", request.getTriggerType());
     result.put("status", request.getStatus());
+    result.put("proposed_price", request.getProposedPrice());
     result.put("message", request.getMessage());
     result.put("response_note", request.getResponseNote());
     result.put("submitted_at", request.getSubmittedAt());

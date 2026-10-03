@@ -39,6 +39,8 @@ public class PlatformSubscriptionRequestController {
     return service.update(id, body.status(), body.responseNote(), admin.getId());
   }
 
+
   public record UpdateRequest(
       String status, @JsonProperty("response_note") String responseNote) {}
+
 }
