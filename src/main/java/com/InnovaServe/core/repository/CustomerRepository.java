@@ -1,6 +1,8 @@
 package com.InnovaServe.core.repository;
 
 import com.InnovaServe.core.entity.Customer;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -11,6 +13,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
   Optional<Customer> findByTenantIdAndId(UUID tenantId, UUID id);
 
   Optional<Customer> findByTenantIdAndPhone(UUID tenantId, String phone);
+
+  List<Customer> findAllByTenantIdAndIdIn(UUID tenantId, Collection<UUID> ids);
 
   Page<Customer> findAllByTenantId(UUID tenantId, Pageable pageable);
 }

@@ -92,6 +92,16 @@ public class RestaurantService {
     return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());
   }
 
+  @Transactional(readOnly = true)
+  public List<Map<String, String>> roomServiceRooms() {
+    moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    return stayLookup.findActiveRoomServiceOptions(tenant.tenantId()).stream()
+        .map(option -> Map.of(
+            "room_number", option.roomNumber(),
+            "guest_name", option.guestName()))
+        .toList();
+  }
+
   @Transactional
   public DiningTable addTable(String number, String section) {
     if (number == null || number.isBlank() || number.length() > 10)
@@ -103,21 +113,33 @@ public class RestaurantService {
   }
 
   @Transactional
-  public RestaurantOrder openOrder(String type, UUID tableId, UUID stayId) {
+  public RestaurantOrder openOrder(String type, UUID tableId, String roomNumber, UUID legacyStayId) {
     if (!Set.of("dine_in", "room_service", "takeaway").contains(type))
       throw new IllegalArgumentException("Invalid restaurant order type");
     if ("room_service".equals(type))
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
-    if ("room_service".equals(type) && stayId == null)
-      throw new IllegalArgumentException("Room-service orders must be associated with a stay");
-    if (stayId != null) {
+    UUID stayId = null;
+    if ("room_service".equals(type) && (roomNumber == null || roomNumber.isBlank())
+        && legacyStayId == null)
+      throw new IllegalArgumentException("Choose an occupied room for room service");
+    if (roomNumber != null && !roomNumber.isBlank()) {
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
-      StayLookupPort.StaySummary stay =
-          stayLookup
-              .findById(tenant.tenantId(), stayId)
-              .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+      String normalizedRoomNumber = roomNumber.trim();
+      StayLookupPort.StaySummary stay = stayLookup
+          .findActiveByRoomNumber(tenant.tenantId(), normalizedRoomNumber)
+          .orElseThrow(() -> new NoSuchElementException(
+              "No active guest in Room " + normalizedRoomNumber));
+      if (legacyStayId != null && !legacyStayId.equals(stay.id()))
+        throw new IllegalArgumentException("The selected room and stay do not match");
+      stayId = stay.id();
+    } else if (legacyStayId != null) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+      StayLookupPort.StaySummary stay = stayLookup
+          .findById(tenant.tenantId(), legacyStayId)
+          .orElseThrow(() -> new NoSuchElementException("Stay not found"));
       if (!"active".equals(stay.status()))
         throw new IllegalStateException("Restaurant orders require an active stay");
+      stayId = stay.id();
     }
     if (tableId != null) {
       DiningTable table =

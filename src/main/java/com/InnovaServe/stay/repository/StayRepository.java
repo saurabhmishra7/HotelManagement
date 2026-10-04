@@ -10,6 +10,8 @@ public interface StayRepository extends JpaRepository<Stay, UUID> {
   Optional<Stay> findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(
       UUID tenantId, UUID roomId, String status);
 
+  List<Stay> findAllByTenantIdAndStatusOrderByCheckInAtDesc(UUID tenantId, String status);
+
   List<Stay> findAllByTenantIdAndAccountId(UUID tenantId, UUID accountId);
 
   List<Stay> findAllByTenantIdAndCustomerIdOrderByCheckInAtDesc(

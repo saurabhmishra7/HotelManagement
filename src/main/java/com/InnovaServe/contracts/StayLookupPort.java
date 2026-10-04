@@ -13,6 +13,8 @@ public interface StayLookupPort {
 
   Optional<StaySummary> findActiveByRoomId(UUID tenantId, UUID roomId);
 
+  List<RoomServiceOption> findActiveRoomServiceOptions(UUID tenantId);
+
   List<StaySummary> findAllByCustomerId(UUID tenantId, UUID customerId);
 
   List<StayChargeSummary> findCharges(UUID tenantId, UUID stayId);
@@ -21,6 +23,8 @@ public interface StayLookupPort {
 
   record StaySummary(
       UUID id, UUID accountId, UUID customerId, UUID roomId, String status, String guestName) {}
+
+  record RoomServiceOption(String roomNumber, String guestName) {}
 
   record StayChargeSummary(UUID id, String description, BigDecimal amount) {}
 }

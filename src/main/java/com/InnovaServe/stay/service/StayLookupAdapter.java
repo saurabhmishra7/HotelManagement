@@ -8,8 +8,10 @@ import com.InnovaServe.stay.repository.RoomRepository;
 import com.InnovaServe.stay.repository.StayChargeRepository;
 import com.InnovaServe.stay.repository.StayRepository;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +57,33 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
     return stays
         .findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(tenantId, roomId, "active")
         .map(stay -> summary(tenantId, stay));
+  }
+
+  @Override
+  public List<RoomServiceOption> findActiveRoomServiceOptions(UUID tenantId) {
+    var roomNumbers =
+        rooms.findAllByTenantIdOrderByRoomNumber(tenantId).stream()
+            .collect(Collectors.toMap(
+                com.InnovaServe.stay.entity.Room::getId,
+                com.InnovaServe.stay.entity.Room::getRoomNumber));
+    List<Stay> activeStays = stays.findAllByTenantIdAndStatusOrderByCheckInAtDesc(tenantId, "active");
+    Map<UUID, Stay> stayByRoomId = new java.util.LinkedHashMap<>();
+    activeStays.stream()
+        .filter(stay -> roomNumbers.containsKey(stay.getRoomId()))
+        .forEach(stay -> stayByRoomId.putIfAbsent(stay.getRoomId(), stay));
+    var customerIds =
+        stayByRoomId.values().stream().map(Stay::getCustomerId).collect(Collectors.toSet());
+    if (customerIds.isEmpty()) return List.of();
+    Map<UUID, String> guestNames = customers.findAllByTenantIdAndIdIn(tenantId, customerIds)
+        .stream()
+        .collect(Collectors.toMap(
+            com.InnovaServe.core.entity.Customer::getId,
+            com.InnovaServe.core.entity.Customer::getName));
+    return stayByRoomId.values().stream()
+        .map(stay -> new RoomServiceOption(
+            roomNumbers.get(stay.getRoomId()),
+            guestNames.getOrDefault(stay.getCustomerId(), "")))
+        .toList();
   }
 
   @Override
