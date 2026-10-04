@@ -2,6 +2,7 @@ package com.InnovaServe.restaurant.entity;
 
 import com.InnovaServe.core.entity.TenantEntity;
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -24,6 +25,15 @@ public class OrderItem extends TenantEntity {
 
   @Column(name = "kot_batch_id")
   private UUID kotBatchId;
+
+  @Column(name = "placed_at", insertable = false, updatable = false)
+  private LocalDateTime placedAt;
+
+  @Column(name = "preparing_at")
+  private LocalDateTime preparingAt;
+
+  @Column(name = "served_at")
+  private LocalDateTime servedAt;
 
   protected OrderItem() {}
 
@@ -60,6 +70,18 @@ public class OrderItem extends TenantEntity {
     return kotBatchId;
   }
 
+  public LocalDateTime getPlacedAt() {
+    return placedAt;
+  }
+
+  public LocalDateTime getPreparingAt() {
+    return preparingAt;
+  }
+
+  public LocalDateTime getServedAt() {
+    return servedAt;
+  }
+
   public void send(UUID batch) {
     status = "sent";
     kotBatchId = batch;
@@ -69,12 +91,14 @@ public class OrderItem extends TenantEntity {
     if (!"sent".equals(status))
       throw new IllegalStateException("Only sent order items can be marked preparing");
     status = "preparing";
+    preparingAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
   public void markServed() {
     if (!"preparing".equals(status))
       throw new IllegalStateException("Only preparing order items can be marked served");
     status = "served";
+    servedAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
   public void reject(String reason) {

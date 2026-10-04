@@ -38,4 +38,10 @@ public class DiningTable extends TenantEntity {
   public void setStatus(String s) {
     status = s;
   }
+
+  public void clear() {
+    if (!"billed".equals(status))
+      throw new IllegalStateException("Only billed tables can be marked clear");
+    status = "free";
+  }
 }

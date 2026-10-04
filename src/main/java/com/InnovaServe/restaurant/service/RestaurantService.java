@@ -8,6 +8,7 @@ import com.InnovaServe.contracts.StayLookupPort;
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.repository.*;
 import java.math.*;
+import java.time.*;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,6 +93,37 @@ public class RestaurantService {
     return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());
   }
 
+  @Transactional
+  public DiningTable clearTable(UUID tableId) {
+    DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), tableId)
+        .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+    if (!"billed".equals(table.getStatus()))
+      throw new IllegalStateException("Create the bill before clearing this table");
+    if (orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open"))
+      throw new IllegalStateException("An open order is still linked to this table");
+
+    RestaurantOrder latestOrder = orders
+        .findFirstByTenantIdAndTableIdAndStatusOrderByCreatedAtDesc(
+            tenant.tenantId(), tableId, "billed")
+        .orElseThrow(() -> new IllegalStateException("No billed order was found for this table"));
+    boolean itemsNotServed = orderItems.findAllByTenantIdAndOrderId(
+            tenant.tenantId(), latestOrder.getId()).stream()
+        .anyMatch(item -> !Set.of("served", "cancelled").contains(item.getStatus()));
+    if (itemsNotServed)
+      throw new IllegalStateException("Serve or cancel every item before clearing the table");
+
+    RestaurantBill bill = bills.findByTenantIdAndOrderId(tenant.tenantId(), latestOrder.getId())
+        .orElseThrow(() -> new IllegalStateException("Create the bill before clearing this table"));
+    Invoice invoice = billing.getInvoice(bill.getInvoiceId());
+    boolean postedToGuestAccount = "account".equals(bill.getSettlementMode())
+        && invoice.getAccountId() != null;
+    if (billing.amountDue(invoice).signum() > 0 && !postedToGuestAccount)
+      throw new IllegalStateException("Settle the bill before clearing this table");
+
+    table.clear();
+    return table;
+  }
+
   @Transactional(readOnly = true)
   public List<Map<String, String>> roomServiceRooms() {
     moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
@@ -162,6 +194,66 @@ public class RestaurantService {
 
   public List<RestaurantOrder> orders() {
     return orders.findAllByTenantIdOrderByCreatedAtDesc(tenant.tenantId());
+  }
+
+  public List<Map<String, Object>> tableService() {
+    List<RestaurantOrder> openDineInOrders =
+        orders.findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
+            tenant.tenantId(), "dine_in", "open");
+    Map<UUID, List<Map<String, Object>>> ordersByTable = new HashMap<>();
+    for (RestaurantOrder order : openDineInOrders) {
+      Map<String, Object> orderView = new LinkedHashMap<>();
+      orderView.put("order", order);
+      orderView.put("items", orderItems(order.getId()).stream().map(this::kitchenItem).toList());
+      ordersByTable.computeIfAbsent(order.getTableId(), ignored -> new ArrayList<>()).add(orderView);
+    }
+    return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId()).stream()
+        .map(table -> {
+          Map<String, Object> tableView = new LinkedHashMap<>();
+          tableView.put("table", table);
+          tableView.put("orders", ordersByTable.getOrDefault(table.getId(), List.of()));
+          return tableView;
+        })
+        .toList();
+  }
+
+  public Map<String, Object> servicePerformance() {
+    LocalDateTime since = LocalDateTime.now(ZoneOffset.UTC).minusDays(30);
+    List<Map<String, Object>> completedItems =
+        orderItems.findAllByTenantIdAndServedAtGreaterThanEqualOrderByServedAtDesc(
+                tenant.tenantId(), since).stream()
+            .filter(item -> item.getPlacedAt() != null && item.getPreparingAt() != null)
+            .map(item -> {
+              long waitSeconds = Duration.between(item.getPlacedAt(), item.getPreparingAt()).toSeconds();
+              long preparationSeconds = Duration.between(item.getPreparingAt(), item.getServedAt()).toSeconds();
+              Map<String, Object> row = new LinkedHashMap<>();
+              row.put("item_id", item.getId());
+              row.put("order_id", item.getOrderId());
+              row.put("menu_item_id", item.getMenuItemId());
+              row.put("name", items.findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
+                  .map(MenuItem::getName).orElse("Unavailable menu item"));
+              row.put("placed_at", item.getPlacedAt().atOffset(ZoneOffset.UTC));
+              row.put("preparing_at", item.getPreparingAt().atOffset(ZoneOffset.UTC));
+              row.put("served_at", item.getServedAt().atOffset(ZoneOffset.UTC));
+              row.put("waiting_seconds", waitSeconds);
+              row.put("preparation_seconds", preparationSeconds);
+              row.put("total_seconds", waitSeconds + preparationSeconds);
+              return row;
+            })
+            .toList();
+    return Map.of(
+        "period_days", 30,
+        "completed_items", completedItems.size(),
+        "average_wait_seconds", averageSeconds(completedItems, "waiting_seconds"),
+        "average_preparation_seconds", averageSeconds(completedItems, "preparation_seconds"),
+        "average_total_seconds", averageSeconds(completedItems, "total_seconds"),
+        "items", completedItems);
+  }
+
+  private long averageSeconds(List<Map<String, Object>> rows, String key) {
+    return rows.isEmpty()
+        ? 0
+        : Math.round(rows.stream().mapToLong(row -> (Long) row.get(key)).average().orElse(0));
   }
 
   public List<OrderItem> orderItems(UUID id) {
@@ -261,7 +353,14 @@ public class RestaurantService {
     item.put("quantity", orderItem.getQuantity());
     item.put("notes", orderItem.getNotes());
     item.put("status", orderItem.getStatus());
+    item.put("placed_at", utcTimestamp(orderItem.getPlacedAt()));
+    item.put("preparing_at", utcTimestamp(orderItem.getPreparingAt()));
+    item.put("served_at", utcTimestamp(orderItem.getServedAt()));
     return item;
+  }
+
+  private OffsetDateTime utcTimestamp(LocalDateTime value) {
+    return value == null ? null : value.atOffset(ZoneOffset.UTC);
   }
 
   public List<Map<String, Object>> pendingKots(String station) {

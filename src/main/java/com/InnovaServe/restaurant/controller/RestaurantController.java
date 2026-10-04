@@ -83,6 +83,18 @@ public class RestaurantController {
     return service.tables();
   }
 
+  @GetMapping("/table-service")
+  @PreAuthorize("hasAuthority('PERM_ORDER_READ')")
+  public List<Map<String, Object>> tableService() {
+    return service.tableService();
+  }
+
+  @GetMapping("/service-performance")
+  @PreAuthorize("hasAuthority('PERM_SERVICE_PERFORMANCE_READ')")
+  public Map<String, Object> servicePerformance() {
+    return service.servicePerformance();
+  }
+
   @GetMapping("/room-service-rooms")
   @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
   public List<Map<String, String>> roomServiceRooms() {
@@ -93,6 +105,12 @@ public class RestaurantController {
   @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
   public DiningTable createTable(@RequestBody DiningTableRequest r) {
     return service.addTable(r.tableNumber(), r.section());
+  }
+
+  @PostMapping("/dining-tables/{id}/clear")
+  @PreAuthorize("hasAuthority('PERM_TABLE_CLEAR')")
+  public DiningTable clearTable(@PathVariable UUID id) {
+    return service.clearTable(id);
   }
 
   @PostMapping("/orders")

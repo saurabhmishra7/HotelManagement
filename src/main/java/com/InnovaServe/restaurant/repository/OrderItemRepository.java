@@ -12,4 +12,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
   Optional<OrderItem> findByTenantIdAndOrderIdAndId(UUID t, UUID order, UUID id);
 
   Optional<OrderItem> findByTenantIdAndId(UUID tenantId, UUID id);
+
+  List<OrderItem> findAllByTenantIdAndServedAtGreaterThanEqualOrderByServedAtDesc(
+      UUID tenantId, java.time.LocalDateTime servedAt);
 }

@@ -7,6 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder, UUID> {
   List<RestaurantOrder> findAllByTenantIdOrderByCreatedAtDesc(UUID t);
 
+  List<RestaurantOrder> findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
+      UUID tenantId, String orderType, String status);
+
+  Optional<RestaurantOrder> findFirstByTenantIdAndTableIdAndStatusOrderByCreatedAtDesc(
+      UUID tenantId, UUID tableId, String status);
+
+  boolean existsByTenantIdAndTableIdAndStatus(UUID tenantId, UUID tableId, String status);
+
   List<RestaurantOrder> findAllByTenantIdAndStayIdOrderByCreatedAtDesc(UUID t, UUID stayId);
 
   Optional<RestaurantOrder> findByTenantIdAndId(UUID t, UUID id);
