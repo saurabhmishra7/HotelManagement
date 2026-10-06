@@ -40,6 +40,7 @@ public class CustomerController {
             request.phone(),
             request.idProofType(),
             request.idProofNumber(),
+            request.idProofTypeOther(),
             request.address());
     return Map.of("id", result.customer().getId(), "is_new_customer", result.isNew());
   }
@@ -49,5 +50,6 @@ public class CustomerController {
       String phone,
       @JsonProperty("id_proof_type") String idProofType,
       @JsonProperty("id_proof_number") String idProofNumber,
+      @JsonProperty("id_proof_type_other") String idProofTypeOther,
       String address) {}
 }

@@ -52,7 +52,46 @@ public class StayService {
 
   @Transactional
   public Room createRoom(String roomNumber, RoomType roomType, String floor, BigDecimal baseTariff) {
-    if (roomNumber == null || roomNumber.isBlank() || roomNumber.length() > 10) {
+    String normalizedRoomNumber = validateRoomDetails(roomNumber, roomType, floor, baseTariff);
+    UUID tenantId = tenant.tenantId();
+    if (rooms.existsByTenantIdAndRoomNumber(tenantId, normalizedRoomNumber)) {
+      throw new IllegalArgumentException("Room number already exists");
+    }
+
+    return rooms.save(
+        new Room(tenantId, normalizedRoomNumber, roomType.name(), floor, baseTariff, "vacant"));
+  }
+
+  @Transactional
+  public Room updateRoom(
+      UUID roomId, String roomNumber, RoomType roomType, String floor, BigDecimal baseTariff) {
+    UUID tenantId = tenant.tenantId();
+    Room room =
+        rooms.findByTenantIdAndId(tenantId, roomId)
+            .orElseThrow(() -> new NoSuchElementException("Room not found"));
+    String normalizedRoomNumber = validateRoomDetails(roomNumber, roomType, floor, baseTariff);
+
+    if (!normalizedRoomNumber.equals(room.getRoomNumber())
+        && stays.findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(
+                tenantId, roomId, "active")
+            .isPresent()) {
+      throw new IllegalStateException("Room number cannot be changed while a guest is staying in it");
+    }
+    if (rooms.existsByTenantIdAndRoomNumberAndIdNot(tenantId, normalizedRoomNumber, roomId)) {
+      throw new IllegalArgumentException("Room number already exists");
+    }
+
+    room.setRoomNumber(normalizedRoomNumber);
+    room.setRoomType(roomType.name());
+    room.setFloor(floor);
+    room.setBaseTariff(baseTariff);
+    return room;
+  }
+
+  private String validateRoomDetails(
+      String roomNumber, RoomType roomType, String floor, BigDecimal baseTariff) {
+    String normalizedRoomNumber = roomNumber == null ? "" : roomNumber.trim();
+    if (normalizedRoomNumber.isBlank() || normalizedRoomNumber.length() > 10) {
       throw new IllegalArgumentException("Room number is required and must be at most 10 characters");
     }
     if (roomType == null) {
@@ -64,15 +103,7 @@ public class StayService {
     if (baseTariff == null || baseTariff.signum() <= 0) {
       throw new IllegalArgumentException("Base tariff must be greater than zero");
     }
-
-    UUID tenantId = tenant.tenantId();
-    String normalizedRoomNumber = roomNumber.trim();
-    if (rooms.existsByTenantIdAndRoomNumber(tenantId, normalizedRoomNumber)) {
-      throw new IllegalArgumentException("Room number already exists");
-    }
-
-    return rooms.save(
-        new Room(tenantId, normalizedRoomNumber, roomType.name(), floor, baseTariff, "vacant"));
+    return normalizedRoomNumber;
   }
 
   public Room room(UUID id) {
@@ -103,6 +134,7 @@ public class StayService {
             r.customer().phone(),
             r.customer().idProofType(),
             r.customer().idProofNumber(),
+            r.customer().idProofTypeOther(),
             r.customer().address());
     Account account = accounts.save(new Account(tid, "stay", "stay", null));
     Stay stay =
@@ -147,10 +179,20 @@ public class StayService {
     Map<String, Object> customerDetails = new LinkedHashMap<>();
     customerDetails.put("id", customer.getId());
     customerDetails.put("name", customer.getName());
+    customerDetails.put("phone", customer.getPhone());
+    customerDetails.put("idProofType", customer.getIdProofType());
+    customerDetails.put("idProofNumber", customer.getIdProofNumber());
+    customerDetails.put("idProofTypeOther", customer.getIdProofTypeOther());
+    customerDetails.put("address", customer.getAddress());
+    customerDetails.put("createdAt", customer.getCreatedAt());
 
     Map<String, Object> roomDetails = new LinkedHashMap<>();
     roomDetails.put("id", room.getId());
     roomDetails.put("roomNumber", room.getRoomNumber());
+    roomDetails.put("roomType", room.getRoomType());
+    roomDetails.put("floor", room.getFloor());
+    roomDetails.put("baseTariff", room.getBaseTariff());
+    roomDetails.put("status", room.getStatus());
 
     Map<String, Object> stayDetails = new LinkedHashMap<>();
     stayDetails.put("id", stay.getId());
@@ -159,6 +201,7 @@ public class StayService {
     stayDetails.put("customerId", stay.getCustomerId());
     stayDetails.put("customer", customerDetails);
     stayDetails.put("accountId", stay.getAccountId());
+    stayDetails.put("checkoutInvoiceId", stay.getCheckoutInvoiceId());
     stayDetails.put("guestCount", stay.getGuestCount());
     stayDetails.put("isForeignGuest", stay.isForeignGuest());
     stayDetails.put("plan", stay.getPlan());
@@ -228,6 +271,108 @@ public class StayService {
           return option;
         })
         .toList();
+  }
+
+  @Transactional
+  public Map<String, Object> updateStay(UUID stayId, StayUpdate request) {
+    UUID tenantId = tenant.tenantId();
+    Stay stay = stays.findByTenantIdAndIdForUpdate(tenantId, stayId)
+        .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+    requireActiveStay(stay);
+    if (stay.getCheckoutInvoiceId() != null) {
+      throw new IllegalStateException("Stay details cannot be changed after the final bill is prepared");
+    }
+    if (request == null || request.customer() == null) {
+      throw new IllegalArgumentException("Lead guest details are required");
+    }
+
+    Guest guest = request.customer();
+    String name = guest.name() == null ? "" : guest.name().trim();
+    String phone = guest.phone() == null ? "" : guest.phone().trim();
+    if (name.isBlank() || name.length() > 150) {
+      throw new IllegalArgumentException("Guest name is required and must be at most 150 characters");
+    }
+    if (phone.isBlank() || phone.length() > 15) {
+      throw new IllegalArgumentException("Guest phone is required and must be at most 15 characters");
+    }
+    customers.updateProfile(
+        stay.getCustomerId(),
+        name,
+        phone,
+        guest.idProofType(),
+        guest.idProofNumber(),
+        guest.idProofTypeOther(),
+        guest.address());
+    validateStayUpdate(request, stay);
+    stay.updateDetails(
+        request.guestCount(),
+        request.isForeignGuest(),
+        request.plan(),
+        request.tariff().setScale(2, RoundingMode.HALF_UP),
+        request.expectedCheckOutAt(),
+        request.advancePaid().setScale(2, RoundingMode.HALF_UP));
+    if (request.isForeignGuest()
+        && forms.findByTenantIdAndStayId(tenantId, stayId).isEmpty()) {
+      forms.save(new FormCSubmission(tenantId, stayId));
+    }
+    return stayDetails(stayId);
+  }
+
+  private void validateStayUpdate(StayUpdate request, Stay stay) {
+    if (request.guestCount() < 1) {
+      throw new IllegalArgumentException("Guest count must be at least one");
+    }
+    if (request.plan() == null || !Set.of("EP", "CP", "MAP", "AP").contains(request.plan())) {
+      throw new IllegalArgumentException("Invalid meal plan");
+    }
+    if (request.tariff() == null || request.tariff().signum() <= 0) {
+      throw new IllegalArgumentException("Nightly tariff must be greater than zero");
+    }
+    if (request.advancePaid() == null || request.advancePaid().signum() < 0) {
+      throw new IllegalArgumentException("Advance paid cannot be negative");
+    }
+    if (request.expectedCheckOutAt() == null
+        || !request.expectedCheckOutAt().isAfter(stay.getCheckInAt())) {
+      throw new IllegalArgumentException("Expected checkout must be after check-in");
+    }
+  }
+
+  @Transactional
+  public Map<String, Object> changeRoom(UUID stayId, UUID targetRoomId) {
+    UUID tenantId = tenant.tenantId();
+    Stay stay = stays.findByTenantIdAndIdForUpdate(tenantId, stayId)
+        .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+    requireActiveStay(stay);
+    if (stay.getCheckoutInvoiceId() != null) {
+      throw new IllegalStateException("Room cannot be changed after the final bill is prepared");
+    }
+    if (targetRoomId == null || targetRoomId.equals(stay.getRoomId())) {
+      throw new IllegalArgumentException("Choose a different available room");
+    }
+
+    Map<UUID, Room> lockedRooms = new HashMap<>();
+    List.of(stay.getRoomId(), targetRoomId).stream().sorted()
+        .forEach(id -> rooms.lockByTenantIdAndId(tenantId, id)
+            .ifPresent(room -> lockedRooms.put(id, room)));
+    Room currentRoom = lockedRooms.get(stay.getRoomId());
+    Room targetRoom = lockedRooms.get(targetRoomId);
+    if (currentRoom == null || targetRoom == null) {
+      throw new NoSuchElementException("Room not found");
+    }
+    if (!Set.of("vacant", "clean").contains(targetRoom.getStatus())) {
+      throw new IllegalStateException("Selected room is no longer available");
+    }
+
+    currentRoom.setStatus("dirty");
+    targetRoom.setStatus("occupied");
+    stay.changeRoom(targetRoomId);
+    return stayDetails(stayId);
+  }
+
+  private void requireActiveStay(Stay stay) {
+    if (!"active".equals(stay.getStatus())) {
+      throw new IllegalStateException("Stay is not active");
+    }
   }
 
   @Transactional
@@ -388,10 +533,24 @@ public class StayService {
   }
 
   public record Guest(
-      String name, String phone, String idProofType, String idProofNumber, String address) {}
+      String name,
+      String phone,
+      String idProofType,
+      String idProofNumber,
+      String idProofTypeOther,
+      String address) {}
 
   public record CheckIn(
       UUID roomId,
+      Guest customer,
+      short guestCount,
+      String plan,
+      BigDecimal tariff,
+      BigDecimal advancePaid,
+      boolean isForeignGuest,
+      LocalDateTime expectedCheckOutAt) {}
+
+  public record StayUpdate(
       Guest customer,
       short guestCount,
       String plan,

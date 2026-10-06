@@ -11,6 +11,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
   boolean existsByTenantIdAndRoomNumber(UUID tenantId, String roomNumber);
 
+  boolean existsByTenantIdAndRoomNumberAndIdNot(UUID tenantId, String roomNumber, UUID id);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select r from Room r where r.tenantId=:tenantId and r.id=:id")
   Optional<Room> lockByTenantIdAndId(

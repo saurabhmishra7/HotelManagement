@@ -134,6 +134,25 @@ public class Stay extends TenantEntity {
     return foreignGuest;
   }
 
+  public void updateDetails(
+      short guestCount,
+      boolean foreignGuest,
+      String plan,
+      BigDecimal tariff,
+      LocalDateTime expectedCheckOutAt,
+      BigDecimal advancePaid) {
+    this.guestCount = guestCount;
+    this.foreignGuest = foreignGuest;
+    this.plan = plan;
+    this.tariff = tariff;
+    this.expectedCheckOutAt = expectedCheckOutAt;
+    this.advancePaid = advancePaid;
+  }
+
+  public void changeRoom(UUID roomId) {
+    this.roomId = roomId;
+  }
+
   public void checkout() {
     status = "checked_out";
     actualCheckOutAt = LocalDateTime.now();

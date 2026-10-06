@@ -33,6 +33,9 @@ public class Customer {
   @Column(name = "id_proof_number", length = 50)
   private String idProofNumber;
 
+  @Column(name = "id_proof_type_other", length = 100)
+  private String idProofTypeOther;
+
   @Column(columnDefinition = "text")
   private String address;
 
@@ -48,11 +51,23 @@ public class Customer {
       String idProofType,
       String idProofNumber,
       String address) {
+    this(tenantId, name, phone, idProofType, idProofNumber, null, address);
+  }
+
+  public Customer(
+      UUID tenantId,
+      String name,
+      String phone,
+      String idProofType,
+      String idProofNumber,
+      String idProofTypeOther,
+      String address) {
     this.tenantId = tenantId;
     this.name = name;
     this.phone = phone;
     this.idProofType = idProofType;
     this.idProofNumber = idProofNumber;
+    this.idProofTypeOther = idProofTypeOther;
     this.address = address;
   }
 
@@ -83,6 +98,11 @@ public class Customer {
     return idProofNumber;
   }
 
+  @JsonProperty("id_proof_type_other")
+  public String getIdProofTypeOther() {
+    return idProofTypeOther;
+  }
+
   public String getAddress() {
     return address;
   }
@@ -96,6 +116,21 @@ public class Customer {
     this.name = name;
     this.idProofType = idProofType;
     this.idProofNumber = idProofNumber;
+    this.address = address;
+  }
+
+  public void updateProfile(
+      String name,
+      String phone,
+      String idProofType,
+      String idProofNumber,
+      String idProofTypeOther,
+      String address) {
+    this.name = name;
+    this.phone = phone;
+    this.idProofType = idProofType;
+    this.idProofNumber = idProofNumber;
+    this.idProofTypeOther = idProofTypeOther;
     this.address = address;
   }
 }

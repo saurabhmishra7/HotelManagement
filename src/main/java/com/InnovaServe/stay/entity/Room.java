@@ -60,6 +60,22 @@ public class Room extends TenantEntity {
     return status;
   }
 
+  public void setRoomNumber(String roomNumber) {
+    this.roomNumber = roomNumber;
+  }
+
+  public void setRoomType(String roomType) {
+    this.roomType = roomType;
+  }
+
+  public void setFloor(String floor) {
+    this.floor = floor;
+  }
+
+  public void setBaseTariff(BigDecimal baseTariff) {
+    this.baseTariff = baseTariff;
+  }
+
   public void setStatus(String s) {
     status = s;
   }

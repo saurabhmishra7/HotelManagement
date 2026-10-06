@@ -43,6 +43,13 @@ public class StayController {
         request.roomNumber(), request.roomType(), request.floor(), request.baseTariff());
   }
 
+  @PatchMapping("/rooms/{id}")
+  @PreAuthorize("hasAuthority('PERM_ROOM_MANAGE')")
+  public Room updateRoom(@PathVariable UUID id, @RequestBody RoomRequest request) {
+    return service.updateRoom(
+        id, request.roomNumber(), request.roomType(), request.floor(), request.baseTariff());
+  }
+
   @GetMapping("/rooms/{id}")
   @PreAuthorize("hasAuthority('PERM_ROOM_READ')")
   public Room room(@PathVariable UUID id) {
@@ -75,6 +82,20 @@ public class StayController {
   @PreAuthorize("hasAuthority('PERM_STAY_READ')")
   public Map<String, Object> stay(@PathVariable UUID id) {
     return service.stayDetails(id);
+  }
+
+  @PatchMapping("/stays/{id}")
+  @PreAuthorize("hasAuthority('PERM_STAY_MANAGE')")
+  public Map<String, Object> updateStay(
+      @PathVariable UUID id, @RequestBody StayService.StayUpdate request) {
+    return service.updateStay(id, request);
+  }
+
+  @PatchMapping("/stays/{id}/room")
+  @PreAuthorize("hasAuthority('PERM_STAY_MANAGE')")
+  public Map<String, Object> changeRoom(
+      @PathVariable UUID id, @RequestBody ChangeRoomRequest request) {
+    return service.changeRoom(id, request.roomId());
   }
 
   @PostMapping("/stays/{id}/charges")
@@ -120,6 +141,8 @@ public class StayController {
       @JsonProperty("base_tariff") BigDecimal baseTariff) {}
 
   public record ChargeRequest(String description, BigDecimal amount) {}
+
+  public record ChangeRoomRequest(UUID roomId) {}
 
   public record FormCRequest(String referenceNumber) {}
 }

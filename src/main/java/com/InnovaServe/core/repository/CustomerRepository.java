@@ -14,6 +14,8 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
   Optional<Customer> findByTenantIdAndPhone(UUID tenantId, String phone);
 
+  boolean existsByTenantIdAndPhoneAndIdNot(UUID tenantId, String phone, UUID id);
+
   List<Customer> findAllByTenantIdAndIdIn(UUID tenantId, Collection<UUID> ids);
 
   Page<Customer> findAllByTenantId(UUID tenantId, Pageable pageable);

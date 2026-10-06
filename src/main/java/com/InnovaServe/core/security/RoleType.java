@@ -38,6 +38,7 @@ public enum RoleType {
               Permission.ROOM_READ,
               Permission.STAY_READ,
               Permission.STAY_CHECKIN,
+              Permission.STAY_MANAGE,
               Permission.STAY_CHARGE,
               Permission.STAY_CHECKOUT,
               Permission.FORM_C_READ,
