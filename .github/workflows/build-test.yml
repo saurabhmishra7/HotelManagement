@@ -1,0 +1,64 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Compile
+        run: ./mvnw -B compile
+
+      - name: Run tests with H2 in-memory DB
+        run: |
+          ./mvnw -B test \
+            -Dspring.datasource.url=jdbc:h2:mem:test \
+            -Dspring.datasource.driverClassName=org.h2.Driver \
+            -Dspring.jpa.hibernate.ddl-auto=create-drop \
+            -Dflyway.enabled=false \
+            -Dspring.jpa.show-sql=false \
+            -Dspring.jpa.properties.hibernate.format_sql=false \
+            -Dspring.profiles.active=default
+        env:
+          # Disable Flyway and external DB connections in CI
+          SPRING_FLYWAY_ENABLED: "false"
+
+      - name: Package (skip tests)
+        run: ./mvnw -B package -DskipTests
+
+      - name: Upload test report (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            target/surefire-reports/*.txt
+            target/surefire-reports/*.xml
+          retention-days: 14

@@ -1,0 +1,93 @@
+name: Deploy to Zoho Catalyst
+
+on:
+  workflow_dispatch:  # Manual deployment only
+  push:
+    branches: [main]  # Optional: auto-deploy on main (comment out if preferring manual-only)
+
+env:
+  DEFAULT_LISTEN_PORT: "9000"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Install Node.js (for Catalyst CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Zoho Catalyst CLI globally
+        run: npm install -g zcatalyst-cli@beta
+
+      - name: Authenticate with Zoho Catalyst
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+        run: |
+          catalyst login --token "$CATALYST_TOKEN"
+
+      - name: Build the Spring Boot application
+        run: ./mvnw -B -DskipTests package
+
+      - name: Configure environment variables for Catalyst
+        env:
+          CATALYST_PROJECT_NAME: ${{ secrets.CATALYST_PROJECT_NAME }}
+        run: |
+          cat > catalyst-app-config.json <<'EOF'
+          {
+            "env_variables": {
+              "CATALYST_APP_JWT_SECRET": "${{ secrets.CATALYST_APP_JWT_SECRET }}",
+              "CATALYST_TENANT_PROVISIONING_KEY": "${{ secrets.CATALYST_TENANT_PROVISIONING_KEY }}",
+              "CATALYST_DB_URL": "${{ secrets.CATALYST_DB_URL }}",
+              "CATALYST_DB_USERNAME": "${{ secrets.CATALYST_DB_USERNAME }}",
+              "CATALYST_DB_PASSWORD": "${{ secrets.CATALYST_DB_PASSWORD }}",
+              "CATALYST_DB_SCHEMAS": "${{ secrets.CATALYST_DB_SCHEMAS || 'core,stay,restaurant,expense' }}",
+              "CATALYST_DB_DEFAULT_SCHEMA": "${{ secrets.CATALYST_DB_DEFAULT_SCHEMA || 'core' }}",
+              "CATALYST_FLYWAY_ENABLED": "${{ secrets.CATALYST_FLYWAY_ENABLED || 'true' }}",
+              "SMTP_HOST": "${{ secrets.SMTP_HOST }}",
+              "SMTP_USERNAME": "${{ secrets.SMTP_USERNAME }}",
+              "SMTP_PASSWORD": "${{ secrets.SMTP_PASSWORD }}",
+              "APP_MAIL_FROM": "${{ secrets.APP_MAIL_FROM }}",
+              "APP_PASSWORD_RESET_BASE_URL": "${{ secrets.APP_PASSWORD_RESET_BASE_URL }}",
+              "X_ZOHO_CATALYST_LISTEN_PORT": "${{ secrets.X_ZOHO_CATALYST_LISTEN_PORT || '${{ env.DEFAULT_LISTEN_PORT }}' }}"
+            }
+          }
+          EOF
+          catalyst app-config update --config ./catalyst-app-config.json --project "$CATALYST_PROJECT_NAME"
+
+      - name: Deploy to Zoho Catalyst
+        env:
+          CATALYST_APP_NAME: ${{ secrets.CATALYST_APP_NAME }}
+        run: |
+          echo "🚀 Deploying InnovaServe to Zoho Catalyst..."
+          JAR_PATH="target/*.jar"
+          catalyst deploy appsail \
+            --name "$CATALYST_APP_NAME" \
+            --build-path "$JAR_PATH" \
+            --stack "java17" \
+            --platform "javase" \
+            --command "sh -c 'java -jar $JAR_PATH --server.port=${X_ZOHO_CATALYST_LISTEN_PORT}'" \
+            --verbose
+
+      - name: Deployment success notification
+        if: success()
+        run: |
+          echo "✅ Deployment to Zoho Catalyst successful!"
+          echo "App: ${{ secrets.CATALYST_APP_NAME }}"
+          echo "Project: ${{ secrets.CATALYST_PROJECT_NAME }}"
+          echo "Check Catalyst console for deployment details"
