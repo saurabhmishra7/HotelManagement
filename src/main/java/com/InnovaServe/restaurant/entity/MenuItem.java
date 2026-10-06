@@ -14,6 +14,9 @@ public class MenuItem extends TenantEntity {
   @Column(nullable = false, length = 150)
   private String name;
 
+  @Column(name = "item_code", length = 40)
+  private String itemCode;
+
   @Column(nullable = false, precision = 10, scale = 2)
   private BigDecimal price;
 
@@ -32,10 +35,11 @@ public class MenuItem extends TenantEntity {
   protected MenuItem() {}
 
   public MenuItem(
-      UUID t, UUID cat, String name, BigDecimal price, UUID tax, String station, boolean veg) {
+      UUID t, UUID cat, String name, String itemCode, BigDecimal price, UUID tax, String station, boolean veg) {
     super(t);
     categoryId = cat;
     this.name = name;
+    this.itemCode = itemCode;
     this.price = price;
     taxRuleId = tax;
     this.station = station;
@@ -48,6 +52,10 @@ public class MenuItem extends TenantEntity {
 
   public String getName() {
     return name;
+  }
+
+  public String getItemCode() {
+    return itemCode;
   }
 
   public BigDecimal getPrice() {
@@ -70,8 +78,22 @@ public class MenuItem extends TenantEntity {
     return active;
   }
 
-  public void update(BigDecimal price, Boolean active) {
+  public void update(
+      UUID categoryId,
+      String name,
+      String itemCode,
+      BigDecimal price,
+      UUID taxRuleId,
+      String station,
+      Boolean vegFlag,
+      Boolean active) {
+    if (categoryId != null) this.categoryId = categoryId;
+    if (name != null) this.name = name;
+    if (itemCode != null) this.itemCode = itemCode.isBlank() ? null : itemCode;
     if (price != null) this.price = price;
+    if (taxRuleId != null) this.taxRuleId = taxRuleId;
+    if (station != null) this.station = station;
+    if (vegFlag != null) this.vegFlag = vegFlag;
     if (active != null) this.active = active;
   }
 }

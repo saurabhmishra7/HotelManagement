@@ -45,4 +45,8 @@ public class StaffRole {
   public List<String> getPermissions() {
     return permissions;
   }
+
+  public void setPermissions(List<String> permissions) {
+    this.permissions = permissions;
+  }
 }

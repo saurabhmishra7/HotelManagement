@@ -66,6 +66,7 @@ public class RestaurantController {
     return service.addItem(
         r.categoryId(),
         r.name(),
+        r.itemCode(),
         r.price(),
         r.taxRuleId(),
         r.station(),
@@ -75,7 +76,16 @@ public class RestaurantController {
   @PatchMapping("/menu-items/{id}")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
   public MenuItem updateItem(@PathVariable UUID id, @RequestBody MenuItemUpdate r) {
-    return service.updateItem(id, r.price(), r.active());
+    return service.updateItem(
+        id,
+        r.categoryId(),
+        r.name(),
+        r.itemCode(),
+        r.price(),
+        r.taxRuleId(),
+        r.station(),
+        r.vegFlag(),
+        r.active());
   }
 
   @GetMapping("/dining-tables")
@@ -208,12 +218,21 @@ public class RestaurantController {
   public record MenuItemRequest(
       @JsonProperty("category_id") UUID categoryId,
       String name,
+      @JsonProperty("item_code") String itemCode,
       BigDecimal price,
       @JsonProperty("tax_rule_id") UUID taxRuleId,
       String station,
       @JsonProperty("veg_flag") Boolean vegFlag) {}
 
-  public record MenuItemUpdate(BigDecimal price, Boolean active) {}
+  public record MenuItemUpdate(
+      @JsonProperty("category_id") UUID categoryId,
+      String name,
+      @JsonProperty("item_code") String itemCode,
+      BigDecimal price,
+      @JsonProperty("tax_rule_id") UUID taxRuleId,
+      String station,
+      @JsonProperty("veg_flag") Boolean vegFlag,
+      Boolean active) {}
 
   public record OpenOrder(
       @JsonProperty("order_type") String orderType,

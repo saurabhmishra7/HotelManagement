@@ -72,21 +72,59 @@ public class RestaurantService {
 
   @Transactional
   public MenuItem addItem(
-      UUID cat, String name, java.math.BigDecimal price, UUID tax, String station, boolean veg) {
+      UUID cat,
+      String name,
+      String itemCode,
+      java.math.BigDecimal price,
+      UUID tax,
+      String station,
+      boolean veg) {
     categories
         .findByTenantIdAndId(tenant.tenantId(), cat)
         .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
-    return items.save(new MenuItem(tenant.tenantId(), cat, name, price, tax, station, veg));
+    String normalizedCode = normalizeItemCode(itemCode);
+    ensureItemCodeAvailable(normalizedCode, null);
+    return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg));
   }
 
   @Transactional
-  public MenuItem updateItem(UUID id, java.math.BigDecimal price, Boolean active) {
+  public MenuItem updateItem(
+      UUID id,
+      UUID categoryId,
+      String name,
+      String itemCode,
+      java.math.BigDecimal price,
+      UUID taxRuleId,
+      String station,
+      Boolean vegFlag,
+      Boolean active) {
     MenuItem item =
         items
             .findByTenantIdAndId(tenant.tenantId(), id)
             .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
-    item.update(price, active);
+    if (categoryId != null) {
+      categories.findByTenantIdAndId(tenant.tenantId(), categoryId)
+          .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
+    }
+    if (itemCode != null) {
+      String normalizedCode = normalizeItemCode(itemCode);
+      ensureItemCodeAvailable(normalizedCode, id);
+      itemCode = normalizedCode == null ? "" : normalizedCode;
+    }
+    item.update(categoryId, name, itemCode, price, taxRuleId, station, vegFlag, active);
     return item;
+  }
+
+  private String normalizeItemCode(String itemCode) {
+    if (itemCode == null || itemCode.isBlank()) return null;
+    return itemCode.trim().toUpperCase(Locale.ROOT);
+  }
+
+  private void ensureItemCodeAvailable(String itemCode, UUID currentItemId) {
+    if (itemCode == null) return;
+    items.findByTenantIdAndItemCodeIgnoreCase(tenant.tenantId(), itemCode)
+        .filter(existing -> !existing.getId().equals(currentItemId))
+        .ifPresent(existing -> { throw new IllegalArgumentException("Dish code is already in use"); });
   }
 
   public List<DiningTable> tables() {

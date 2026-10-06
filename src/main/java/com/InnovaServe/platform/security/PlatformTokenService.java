@@ -42,7 +42,7 @@ public class PlatformTokenService {
       Map<String, Object> claims = new LinkedHashMap<>();
       claims.put("scope", "platform");
       claims.put("admin_id", adminId.toString());
-      claims.put("exp", System.currentTimeMillis() / 1000 + 1800);
+      claims.put("exp", System.currentTimeMillis() / 1000 + 28800);
       String payload =
           Base64.getUrlEncoder().withoutPadding().encodeToString(mapper.writeValueAsBytes(claims));
       return payload + "." + signature(payload);

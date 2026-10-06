@@ -33,7 +33,7 @@ public class PlatformAuthService {
             admin ->
                 Map.of(
                     "token", tokens.issue(admin.getId()),
-                    "expires_in", 1800,
+                    "expires_in", 28800,
                     "admin", Map.of("id", admin.getId(), "name", admin.getName(), "email", admin.getEmail(), "role", admin.getRole())));
   }
 }

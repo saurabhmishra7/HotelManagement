@@ -23,6 +23,11 @@ public class StaffRoleService {
     return roles.findAllByTenantIdOrderByName(tenant.tenantId());
   }
 
+  public StaffRole get(UUID roleId) {
+    return roles.findByTenantIdAndId(tenant.tenantId(), roleId)
+        .orElseThrow(() -> new NoSuchElementException("Role not found"));
+  }
+
   @Transactional
   public StaffRole create(RoleType roleType, List<Permission> requestedPermissions) {
     if (roleType == null) {
@@ -32,9 +37,6 @@ public class StaffRoleService {
     Set<Permission> allowed = roleType.defaultPermissions();
     Set<Permission> selected =
         requestedPermissions == null ? allowed : Set.copyOf(requestedPermissions);
-    if (!allowed.containsAll(selected)) {
-      throw new IllegalArgumentException("Role cannot grant permissions outside its role template");
-    }
 
     List<StaffRole> existing =
         roles.findAllByTenantIdAndNameOrderById(tenant.tenantId(), roleType.name());
@@ -44,5 +46,17 @@ public class StaffRoleService {
 
     List<String> stored = selected.stream().map(Enum::name).sorted().toList();
     return roles.save(new StaffRole(tenant.tenantId(), roleType.name(), stored));
+  }
+
+  @Transactional
+  public StaffRole update(UUID roleId, List<Permission> requestedPermissions) {
+    if (requestedPermissions == null) {
+      throw new IllegalArgumentException("Permissions are required");
+    }
+    StaffRole role =
+        roles.findByTenantIdAndId(tenant.tenantId(), roleId)
+            .orElseThrow(() -> new NoSuchElementException("Role not found"));
+    role.setPermissions(requestedPermissions.stream().map(Enum::name).distinct().sorted().toList());
+    return role;
   }
 }

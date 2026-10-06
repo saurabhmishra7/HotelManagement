@@ -25,7 +25,7 @@ public class TokenService {
       claims.put("tenant_id", tenant.toString());
       claims.put("user_id", user.toString());
       claims.put("role_id", role == null ? null : role.toString());
-      claims.put("exp", System.currentTimeMillis() / 1000 + 900);
+      claims.put("exp", System.currentTimeMillis() / 1000 + 28800);
       String payload =
           Base64.getUrlEncoder().withoutPadding().encodeToString(mapper.writeValueAsBytes(claims));
       return payload + "." + signature(payload);
