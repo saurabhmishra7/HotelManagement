@@ -1,0 +1,18 @@
+{
+  "env_variables": {
+    "CATALYST_APP_JWT_SECRET": "your-jwt-secret-here",
+    "CATALYST_TENANT_PROVISIONING_KEY": "your-tenant-provisioning-key-here",
+    "CATALYST_DB_URL": "jdbc:postgresql://your-db-host:5432/your-db-name?sslmode=require",
+    "CATALYST_DB_USERNAME": "your-db-username",
+    "CATALYST_DB_PASSWORD": "your-db-password",
+    "CATALYST_DB_SCHEMAS": "core,stay,restaurant,expense",
+    "CATALYST_DB_DEFAULT_SCHEMA": "core",
+    "CATALYST_FLYWAY_ENABLED": "true",
+    "SMTP_HOST": "smtp.gmail.com",
+    "SMTP_USERNAME": "your-email@gmail.com",
+    "SMTP_PASSWORD": "your-app-password",
+    "APP_MAIL_FROM": "no-reply@yourdomain.com",
+    "APP_PASSWORD_RESET_BASE_URL": "https://yourdomain.com/reset-password",
+    "X_ZOHO_CATALYST_LISTEN_PORT": "9000"
+  }
+}

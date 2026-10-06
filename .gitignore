@@ -5,6 +5,9 @@ HELP.md
 target/
 var/expense-receipts/
 .mvn/wrapper/maven-wrapper.jar
+
+# Zoho Catalyst app config (generated from GitHub Secrets, never commit real secrets)
+/app-config.json
 !**/src/main/**/target/
 !**/src/test/**/target/
 
