@@ -85,8 +85,14 @@ public class BillingController {
   @GetMapping("/accounts/{id}/invoices")
   @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
   public List<?> accountInvoices(@PathVariable UUID id) {
-    service.account(id);
     return service.invoicesForAccount(id);
+  }
+
+  @PostMapping("/accounts/{id}/settle-now")
+  @PreAuthorize("hasAuthority('PERM_BILL_SETTLE')")
+  public BillingService.SettlementResult settleAccountNow(
+      @PathVariable UUID id, @RequestBody SettleAccountRequest request) {
+    return service.settleOutstandingAccount(id, request.mode());
   }
 
   @PostMapping("/accounts/{id}/charges")
@@ -192,6 +198,8 @@ public class BillingController {
       String mode,
       BigDecimal amount,
       String reference) {}
+
+  public record SettleAccountRequest(String mode) {}
 
   public record QRCodeRequest(
       @JsonProperty("target_type") String targetType,

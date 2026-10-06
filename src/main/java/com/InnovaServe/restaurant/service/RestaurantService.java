@@ -129,6 +129,8 @@ public class RestaurantService {
     moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
     return stayLookup.findActiveRoomServiceOptions(tenant.tenantId()).stream()
         .map(option -> Map.of(
+            "stay_id", option.stayId().toString(),
+            "account_id", option.accountId().toString(),
             "room_number", option.roomNumber(),
             "guest_name", option.guestName()))
         .toList();
@@ -145,14 +147,13 @@ public class RestaurantService {
   }
 
   @Transactional
-  public RestaurantOrder openOrder(String type, UUID tableId, String roomNumber, UUID legacyStayId) {
+  public RestaurantOrder openOrder(String type, UUID tableId, String roomNumber) {
     if (!Set.of("dine_in", "room_service", "takeaway").contains(type))
       throw new IllegalArgumentException("Invalid restaurant order type");
     if ("room_service".equals(type))
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
     UUID stayId = null;
-    if ("room_service".equals(type) && (roomNumber == null || roomNumber.isBlank())
-        && legacyStayId == null)
+    if ("room_service".equals(type) && (roomNumber == null || roomNumber.isBlank()))
       throw new IllegalArgumentException("Choose an occupied room for room service");
     if (roomNumber != null && !roomNumber.isBlank()) {
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
@@ -161,16 +162,6 @@ public class RestaurantService {
           .findActiveByRoomNumber(tenant.tenantId(), normalizedRoomNumber)
           .orElseThrow(() -> new NoSuchElementException(
               "No active guest in Room " + normalizedRoomNumber));
-      if (legacyStayId != null && !legacyStayId.equals(stay.id()))
-        throw new IllegalArgumentException("The selected room and stay do not match");
-      stayId = stay.id();
-    } else if (legacyStayId != null) {
-      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
-      StayLookupPort.StaySummary stay = stayLookup
-          .findById(tenant.tenantId(), legacyStayId)
-          .orElseThrow(() -> new NoSuchElementException("Stay not found"));
-      if (!"active".equals(stay.status()))
-        throw new IllegalStateException("Restaurant orders require an active stay");
       stayId = stay.id();
     }
     if (tableId != null) {
@@ -468,7 +459,7 @@ public class RestaurantService {
 
   @Transactional
   public String settleBill(UUID billId, String mode, String roomNumber) {
-    if (!Set.of("cash", "card", "upi", "account").contains(mode))
+    if (mode == null || !Set.of("cash", "card", "upi", "account").contains(mode))
       throw new IllegalArgumentException("Invalid settlement mode");
     if ("account".equals(mode))
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
@@ -478,11 +469,23 @@ public class RestaurantService {
             .orElseThrow(() -> new NoSuchElementException("Restaurant bill not found"));
     Invoice invoice = billing.getInvoice(bill.getInvoiceId());
     if ("account".equals(mode)) {
-      StayLookupPort.StaySummary stay =
-          stayLookup
-              .findActiveByRoomNumber(tenant.tenantId(), roomNumber)
-              .orElseThrow(() -> new NoSuchElementException("RoomNotFound"));
       RestaurantOrder order = getOrder(bill.getOrderId());
+      StayLookupPort.StaySummary stay;
+      if (roomNumber != null && !roomNumber.isBlank()) {
+        stay = stayLookup
+            .findActiveByRoomNumber(tenant.tenantId(), roomNumber.trim())
+            .orElseThrow(() -> new NoSuchElementException(
+                "No active guest in Room " + roomNumber.trim()));
+      } else if (order.getStayId() != null) {
+        stay = stayLookup
+            .findById(tenant.tenantId(), order.getStayId())
+            .filter(candidate -> "active".equals(candidate.status()))
+            .orElseThrow(() -> new IllegalStateException(
+                "The order does not have an active linked stay"));
+      } else {
+        throw new IllegalArgumentException(
+            "Provide a room number or create the order linked to an active guest stay");
+      }
       if (order.getStayId() != null && !order.getStayId().equals(stay.id()))
         throw new IllegalStateException("Order is linked to a different stay");
       order.associateStay(stay.id());

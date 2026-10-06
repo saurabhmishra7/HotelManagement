@@ -24,7 +24,7 @@ public interface StayLookupPort {
   record StaySummary(
       UUID id, UUID accountId, UUID customerId, UUID roomId, String status, String guestName) {}
 
-  record RoomServiceOption(String roomNumber, String guestName) {}
+  record RoomServiceOption(UUID stayId, UUID accountId, String roomNumber, String guestName) {}
 
   record StayChargeSummary(UUID id, String description, BigDecimal amount) {}
 }

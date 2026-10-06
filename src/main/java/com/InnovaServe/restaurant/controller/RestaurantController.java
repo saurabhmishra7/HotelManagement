@@ -8,6 +8,7 @@ import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.util.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -114,9 +115,10 @@ public class RestaurantController {
   }
 
   @PostMapping("/orders")
+  @ResponseStatus(HttpStatus.CREATED)
   @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
   public Map<String, Object> openOrder(@RequestBody OpenOrder r) {
-    RestaurantOrder o = service.openOrder(r.orderType(), r.tableId(), r.roomNumber(), r.stayId());
+    RestaurantOrder o = service.openOrder(r.orderType(), r.tableId(), r.roomNumber());
     return Map.of("order_id", o.getId());
   }
 
@@ -216,8 +218,7 @@ public class RestaurantController {
   public record OpenOrder(
       @JsonProperty("order_type") String orderType,
       @JsonProperty("table_id") UUID tableId,
-      @JsonProperty("room_number") String roomNumber,
-      @JsonProperty("stay_id") UUID stayId) {}
+      @JsonProperty("room_number") String roomNumber) {}
 
   public record ItemRequest(
       @JsonProperty("menu_item_id") UUID menuItemId, short quantity, String notes) {}

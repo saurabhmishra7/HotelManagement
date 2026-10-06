@@ -8,6 +8,7 @@ import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
 import java.util.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -65,17 +66,19 @@ public class StayController {
 
   @GetMapping("/stays/active")
   @PreAuthorize("hasAuthority('PERM_STAY_READ')")
-  public Object active(@RequestParam("room_number") String roomNumber) {
-    return service.activeStay(roomNumber);
+  public Object active(@RequestParam(name = "room_number", required = false) String roomNumber) {
+    if (roomNumber == null || roomNumber.isBlank()) return service.activeStays();
+    return service.activeStay(roomNumber.trim());
   }
 
   @GetMapping("/stays/{id}")
   @PreAuthorize("hasAuthority('PERM_STAY_READ')")
   public Map<String, Object> stay(@PathVariable UUID id) {
-    return Map.of("stay", service.getStay(id), "charges", service.charges(id));
+    return service.stayDetails(id);
   }
 
   @PostMapping("/stays/{id}/charges")
+  @ResponseStatus(HttpStatus.CREATED)
   @PreAuthorize("hasAuthority('PERM_STAY_CHARGE')")
   public StayCharge charge(@PathVariable UUID id, @RequestBody ChargeRequest r) {
     return service.addCharge(id, r.description(), r.amount());

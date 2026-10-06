@@ -81,6 +81,8 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
             com.InnovaServe.core.entity.Customer::getName));
     return stayByRoomId.values().stream()
         .map(stay -> new RoomServiceOption(
+            stay.getId(),
+            stay.getAccountId(),
             roomNumbers.get(stay.getRoomId()),
             guestNames.getOrDefault(stay.getCustomerId(), "")))
         .toList();

@@ -21,6 +21,9 @@ public class Stay extends TenantEntity {
   @Column(name = "account_id", nullable = false)
   private UUID accountId;
 
+  @Column(name = "checkout_invoice_id", unique = true)
+  private UUID checkoutInvoiceId;
+
   @Column(name = "guest_count", nullable = false)
   private short guestCount;
 
@@ -87,12 +90,40 @@ public class Stay extends TenantEntity {
     return accountId;
   }
 
+  public UUID getCheckoutInvoiceId() {
+    return checkoutInvoiceId;
+  }
+
+  public void setCheckoutInvoiceId(UUID checkoutInvoiceId) {
+    this.checkoutInvoiceId = checkoutInvoiceId;
+  }
+
+  public short getGuestCount() {
+    return guestCount;
+  }
+
+  public String getPlan() {
+    return plan;
+  }
+
   public BigDecimal getTariff() {
     return tariff;
   }
 
   public LocalDateTime getCheckInAt() {
     return checkInAt;
+  }
+
+  public LocalDateTime getExpectedCheckOutAt() {
+    return expectedCheckOutAt;
+  }
+
+  public LocalDateTime getActualCheckOutAt() {
+    return actualCheckOutAt;
+  }
+
+  public BigDecimal getAdvancePaid() {
+    return advancePaid;
   }
 
   public String getStatus() {

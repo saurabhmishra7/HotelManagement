@@ -93,12 +93,52 @@ public class BillingService {
   }
 
   public List<Invoice> invoicesForAccount(UUID id) {
+    account(id);
     return invoices.findAllByTenantIdAndAccountId(tenant.tenantId(), id);
   }
 
   @Transactional
+  public SettlementResult settleOutstandingAccount(UUID accountId, String mode) {
+    if (mode == null || !Set.of("cash", "card", "upi").contains(mode)) {
+      throw new IllegalArgumentException("Settlement mode must be cash, card, or upi");
+    }
+
+    UUID tenantId = tenant.tenantId();
+    Account account =
+        accounts
+            .findByTenantIdAndIdForUpdate(tenantId, accountId)
+            .orElseThrow(() -> new NoSuchElementException("Account not found"));
+    if ("stay".equals(account.getOpenedByModule())) {
+      moduleEntitlements.requireActive(tenantId, ModuleType.STAY);
+    }
+    if (!"open".equals(account.getStatus())) {
+      throw new IllegalStateException("AccountClosed");
+    }
+
+    List<UUID> paidInvoiceIds = new ArrayList<>();
+    BigDecimal totalAmount = BigDecimal.ZERO;
+    for (Invoice invoice : invoices.findAllByTenantIdAndAccountId(tenantId, accountId)) {
+      if (!"final".equals(invoice.getStatus())) continue;
+      BigDecimal due = amountDue(invoice);
+      if (due.signum() <= 0) continue;
+      payment(invoice.getId(), mode, due, null);
+      paidInvoiceIds.add(invoice.getId());
+      totalAmount = totalAmount.add(due);
+    }
+    return new SettlementResult(List.copyOf(paidInvoiceIds), totalAmount);
+  }
+
+  @Transactional
   public void postInvoiceToAccount(UUID accountId, UUID invoiceId) {
-    Account a = account(accountId);
+    Account a =
+        accounts
+            .findByTenantIdAndIdForUpdate(tenant.tenantId(), accountId)
+            .orElseThrow(() -> new NoSuchElementException("Account not found"));
+    if ("stay".equals(a.getOpenedByModule())) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    } else if ("pos".equals(a.getOpenedByModule())) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
+    }
     if (!"open".equals(a.getStatus())) throw new IllegalStateException("AccountClosed");
     Invoice invoice =
         invoices
@@ -260,7 +300,15 @@ public class BillingService {
 
   @Transactional
   public void closeAccount(UUID id) {
-    Account account = account(id);
+    Account account =
+        accounts
+            .findByTenantIdAndIdForUpdate(tenant.tenantId(), id)
+            .orElseThrow(() -> new NoSuchElementException("Account not found"));
+    if ("stay".equals(account.getOpenedByModule())) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
+    } else if ("pos".equals(account.getOpenedByModule())) {
+      moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.RESTAURANT);
+    }
     List<Invoice> list = invoices.findAllByTenantIdAndAccountId(tenant.tenantId(), id);
     for (Invoice i : list)
       if ((!"final".equals(i.getStatus()) && !"credited".equals(i.getStatus()))
@@ -281,4 +329,6 @@ public class BillingService {
       Invoice invoice, BigDecimal subtotal, BigDecimal taxAmount, BigDecimal totalAmount) {}
 
   public record PaymentResult(Payment payment, boolean overpayment) {}
+
+  public record SettlementResult(List<UUID> paidInvoiceIds, BigDecimal totalAmount) {}
 }

@@ -130,6 +130,47 @@ public class StayService {
         .orElseThrow(() -> new NoSuchElementException("Stay not found"));
   }
 
+  public Map<String, Object> stayDetails(UUID id) {
+    Stay stay = getStay(id);
+    Room room = room(stay.getRoomId());
+    Customer customer = findCustomer(stay.getCustomerId());
+    return Map.of("stay", stayView(stay, room, customer), "charges", charges(id));
+  }
+
+  private Customer findCustomer(UUID customerId) {
+    return customerRepository
+        .findByTenantIdAndId(tenant.tenantId(), customerId)
+        .orElseThrow(() -> new NoSuchElementException("Guest not found"));
+  }
+
+  private Map<String, Object> stayView(Stay stay, Room room, Customer customer) {
+    Map<String, Object> customerDetails = new LinkedHashMap<>();
+    customerDetails.put("id", customer.getId());
+    customerDetails.put("name", customer.getName());
+
+    Map<String, Object> roomDetails = new LinkedHashMap<>();
+    roomDetails.put("id", room.getId());
+    roomDetails.put("roomNumber", room.getRoomNumber());
+
+    Map<String, Object> stayDetails = new LinkedHashMap<>();
+    stayDetails.put("id", stay.getId());
+    stayDetails.put("roomId", stay.getRoomId());
+    stayDetails.put("room", roomDetails);
+    stayDetails.put("customerId", stay.getCustomerId());
+    stayDetails.put("customer", customerDetails);
+    stayDetails.put("accountId", stay.getAccountId());
+    stayDetails.put("guestCount", stay.getGuestCount());
+    stayDetails.put("isForeignGuest", stay.isForeignGuest());
+    stayDetails.put("plan", stay.getPlan());
+    stayDetails.put("tariff", stay.getTariff());
+    stayDetails.put("checkInAt", stay.getCheckInAt());
+    stayDetails.put("expectedCheckOutAt", stay.getExpectedCheckOutAt());
+    stayDetails.put("actualCheckOutAt", stay.getActualCheckOutAt());
+    stayDetails.put("advancePaid", stay.getAdvancePaid());
+    stayDetails.put("status", stay.getStatus());
+    return stayDetails;
+  }
+
   public Map<String, Object> activeStay(String roomNumber) {
     Room room =
         rooms.findAllByTenantIdOrderByRoomNumber(tenant.tenantId()).stream()
@@ -151,12 +192,83 @@ public class StayService {
     return Map.of("stay_id", s.getId(), "account_id", s.getAccountId(), "guest_name", guest);
   }
 
+  public List<Map<String, Object>> activeStays() {
+    UUID tenantId = tenant.tenantId();
+    Map<UUID, Room> roomById = new LinkedHashMap<>();
+    rooms.findAllByTenantIdOrderByRoomNumber(tenantId)
+        .forEach(room -> roomById.put(room.getId(), room));
+
+    List<Stay> activeStays =
+        stays.findAllByTenantIdAndStatusOrderByCheckInAtDesc(tenantId, "active");
+    if (activeStays.isEmpty()) return List.of();
+
+    Set<UUID> customerIds =
+        activeStays.stream().map(Stay::getCustomerId).collect(java.util.stream.Collectors.toSet());
+    Map<UUID, Customer> customersById =
+        customerRepository.findAllByTenantIdAndIdIn(tenantId, customerIds).stream()
+            .collect(java.util.stream.Collectors.toMap(Customer::getId, customer -> customer));
+    Set<UUID> stayIds = activeStays.stream().map(Stay::getId).collect(java.util.stream.Collectors.toSet());
+    Map<UUID, List<StayCharge>> chargesByStayId =
+        charges.findAllByTenantIdAndStayIdIn(tenantId, stayIds).stream()
+            .collect(java.util.stream.Collectors.groupingBy(StayCharge::getStayId));
+
+    return activeStays.stream()
+        .filter(stay -> roomById.containsKey(stay.getRoomId()))
+        .filter(stay -> customersById.containsKey(stay.getCustomerId()))
+        .map(stay -> {
+          Room room = roomById.get(stay.getRoomId());
+          Customer customer = customersById.get(stay.getCustomerId());
+          Map<String, Object> option = new LinkedHashMap<>();
+          option.put("stay_id", stay.getId());
+          option.put("account_id", stay.getAccountId());
+          option.put("room_number", room.getRoomNumber());
+          option.put("guest_name", customer.getName());
+          option.put("stay", stayView(stay, room, customer));
+          option.put("charges", chargesByStayId.getOrDefault(stay.getId(), List.of()));
+          return option;
+        })
+        .toList();
+  }
+
   @Transactional
   public StayCharge addCharge(UUID stayId, String description, BigDecimal amount) {
-    Stay s = getStay(stayId);
-    if (!"active".equals(s.getStatus())) throw new IllegalStateException("Stay is not active");
-    return charges.save(
-        new StayCharge(tenant.tenantId(), stayId, description, amount, tenant.userId()));
+    Stay stay =
+        stays
+            .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
+            .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+    if (!"active".equals(stay.getStatus())) throw new IllegalStateException("Stay is not active");
+    if (description == null || description.isBlank() || description.trim().length() > 200) {
+      throw new IllegalArgumentException("Charge description is required and must be at most 200 characters");
+    }
+    if (amount == null || amount.signum() <= 0) {
+      throw new IllegalArgumentException("Charge amount must be greater than zero");
+    }
+
+    BigDecimal normalizedAmount = amount.setScale(2, RoundingMode.HALF_UP);
+    if (normalizedAmount.signum() <= 0) {
+      throw new IllegalArgumentException("Charge amount must be at least 0.01");
+    }
+    StayCharge charge =
+        charges.saveAndFlush(
+            new StayCharge(
+                tenant.tenantId(), stayId, description.trim(), normalizedAmount, tenant.userId()));
+    UUID taxId =
+        billing.taxes("room").stream()
+            .findFirst()
+            .map(com.InnovaServe.core.entity.TaxRule::getId)
+            .orElse(null);
+    var invoice =
+        billing.createInvoice(
+            new BillingService.NewInvoice(
+                stay.getAccountId(),
+                stay.getCustomerId(),
+                "stay",
+                List.of(
+                    new BillingService.LineInput(
+                        charge.getDescription(), BigDecimal.ONE, normalizedAmount, taxId))));
+    billing.lock(invoice.invoice().getId());
+    charge.setInvoiceId(invoice.invoice().getId());
+    return charge;
   }
 
   public List<StayCharge> charges(UUID id) {
@@ -166,11 +278,16 @@ public class StayService {
 
   @Transactional
   public Map<String, Object> checkout(UUID stayId) {
-    Stay stay = getStay(stayId);
+    Stay stay =
+        stays
+            .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
+            .orElseThrow(() -> new NoSuchElementException("Stay not found"));
     if (!"active".equals(stay.getStatus())) throw new IllegalStateException("Stay is not active");
-    List<com.InnovaServe.core.entity.Invoice> existing =
-        billing.invoicesForAccount(stay.getAccountId());
-    if (existing.stream().noneMatch(i -> "stay".equals(i.getSourceModule()))) {
+    List<StayCharge> unbilledCharges =
+        charges.findAllByTenantIdAndStayId(tenant.tenantId(), stayId).stream()
+            .filter(charge -> charge.getInvoiceId() == null)
+            .toList();
+    if (stay.getCheckoutInvoiceId() == null) {
       long nights =
           Math.max(
               1,
@@ -188,7 +305,7 @@ public class StayService {
               BigDecimal.valueOf(nights),
               stay.getTariff(),
               taxId));
-      for (StayCharge c : charges.findAllByTenantIdAndStayId(tenant.tenantId(), stayId))
+      for (StayCharge c : unbilledCharges)
         lines.add(
             new BillingService.LineInput(c.getDescription(), BigDecimal.ONE, c.getAmount(), taxId));
       var invoice =
@@ -196,18 +313,57 @@ public class StayService {
               new BillingService.NewInvoice(
                   stay.getAccountId(), stay.getCustomerId(), "stay", lines));
       billing.lock(invoice.invoice().getId());
+      stay.setCheckoutInvoiceId(invoice.invoice().getId());
+      unbilledCharges.forEach(charge -> charge.setInvoiceId(invoice.invoice().getId()));
+    } else if (!unbilledCharges.isEmpty()) {
+      UUID taxId =
+          billing.taxes("room").stream()
+              .findFirst()
+              .map(com.InnovaServe.core.entity.TaxRule::getId)
+              .orElse(null);
+      List<BillingService.LineInput> chargeLines =
+          unbilledCharges.stream()
+              .map(charge -> new BillingService.LineInput(
+                  charge.getDescription(), BigDecimal.ONE, charge.getAmount(), taxId))
+              .toList();
+      var chargeInvoice =
+          billing.createInvoice(
+              new BillingService.NewInvoice(
+                  stay.getAccountId(), stay.getCustomerId(), "stay", chargeLines));
+      billing.lock(chargeInvoice.invoice().getId());
+      unbilledCharges.forEach(charge -> charge.setInvoiceId(chargeInvoice.invoice().getId()));
     }
     List<com.InnovaServe.core.entity.Invoice> all = billing.invoicesForAccount(stay.getAccountId());
     BigDecimal due = BigDecimal.ZERO;
+    List<Map<String, Object>> invoiceBreakdown = new ArrayList<>();
     for (var invoice : all) {
-      due = due.add(billing.amountDue(invoice));
+      BigDecimal invoiceDue = billing.amountDue(invoice);
+      BigDecimal paid = billing.amountPaid(invoice.getId());
+      BigDecimal credited =
+          invoice.getTotalAmount().subtract(invoiceDue).subtract(paid).max(BigDecimal.ZERO);
+      due = due.add(invoiceDue);
+
+      Map<String, Object> invoiceDetails = billing.invoice(invoice.getId());
+      Map<String, Object> breakdown = new LinkedHashMap<>();
+      breakdown.put("invoice", invoice);
+      breakdown.put("line_items", invoiceDetails.get("line_items"));
+      breakdown.put("amount_paid", paid);
+      breakdown.put("amount_credited", credited);
+      breakdown.put("amount_due", invoiceDue);
+      invoiceBreakdown.add(breakdown);
     }
-    return Map.of("invoices", all, "total_due", due.toPlainString());
+    return Map.of(
+        "invoices", all,
+        "invoice_breakdown", invoiceBreakdown,
+        "total_due", due.toPlainString());
   }
 
   @Transactional
   public void confirmCheckout(UUID stayId) {
-    Stay stay = getStay(stayId);
+    Stay stay =
+        stays
+            .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
+            .orElseThrow(() -> new NoSuchElementException("Stay not found"));
     billing.closeAccount(stay.getAccountId());
     stay.checkout();
     rooms.findByTenantIdAndId(tenant.tenantId(), stay.getRoomId()).orElseThrow().setStatus("dirty");

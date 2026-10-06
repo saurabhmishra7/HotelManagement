@@ -21,6 +21,9 @@ public class StayCharge extends TenantEntity {
   @Column(name = "added_by", nullable = false)
   private UUID addedBy;
 
+  @Column(name = "invoice_id")
+  private UUID invoiceId;
+
   @Column(name = "created_at", insertable = false, updatable = false)
   private LocalDateTime createdAt;
 
@@ -44,5 +47,17 @@ public class StayCharge extends TenantEntity {
 
   public BigDecimal getAmount() {
     return amount;
+  }
+
+  public UUID getInvoiceId() {
+    return invoiceId;
+  }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setInvoiceId(UUID invoiceId) {
+    this.invoiceId = invoiceId;
   }
 }
