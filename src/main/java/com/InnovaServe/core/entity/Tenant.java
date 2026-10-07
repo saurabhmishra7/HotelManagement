@@ -1,11 +1,10 @@
 package com.InnovaServe.core.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.time.LocalTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -33,6 +32,46 @@ public class Tenant {
 
   @Column(name = "created_at", insertable = false, updatable = false)
   private LocalDateTime createdAt;
+
+  @Column(name = "checkout_time", nullable = false)
+  private LocalTime checkoutTime = LocalTime.of(11, 0);
+
+  @ElementCollection
+  @CollectionTable(name = "tenant_meal_plan", schema = "core",
+      joinColumns = @JoinColumn(name = "tenant_id"))
+  @Column(name = "plan", nullable = false, length = 5)
+  private Set<String> mealPlans = new LinkedHashSet<>(Set.of("EP"));
+
+  @JsonIgnore
+  @Column(name = "logo", columnDefinition = "bytea")
+  private byte[] logo;
+
+  @Column(name = "logo_version")
+  private UUID logoVersion;
+
+  public LocalTime getCheckoutTime() { return checkoutTime; }
+  @JsonIgnore
+  public Set<String> getMealPlans() { return mealPlans; }
+  @JsonIgnore
+  public byte[] getLogo() { return logo; }
+  public UUID getLogoVersion() { return logoVersion; }
+
+  public void updateProfile(String name, String gstin, String address) {
+    this.name = name;
+    this.gstin = gstin;
+    this.address = address;
+  }
+
+  public void updateRules(LocalTime checkoutTime, Set<String> plans) {
+    this.checkoutTime = checkoutTime;
+    this.mealPlans.clear();
+    this.mealPlans.addAll(plans);
+  }
+
+  public void setLogo(byte[] logo) {
+    this.logo = logo;
+    this.logoVersion = logo == null ? null : UUID.randomUUID();
+  }
 
   protected Tenant() {}
 

@@ -3,6 +3,8 @@ package com.InnovaServe.core.entity;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -41,6 +43,12 @@ public class Customer {
 
   @Column(name = "created_at", insertable = false, updatable = false)
   private LocalDateTime createdAt;
+
+  @Transient
+  private long hotelStayCount;
+
+  @Transient
+  private List<StayRecord> stayHistory = new ArrayList<>();
 
   protected Customer() {}
 
@@ -111,6 +119,34 @@ public class Customer {
   public LocalDateTime getCreatedAt() {
     return createdAt;
   }
+
+  @JsonProperty("hotel_stay_count")
+  public long getHotelStayCount() {
+    return hotelStayCount;
+  }
+
+  @JsonProperty("hotel_stay_status")
+  public String getHotelStayStatus() {
+    return hotelStayCount > 0 ? "Has stayed" : "No hotel stay recorded";
+  }
+
+  public void setHotelStayCount(long hotelStayCount) {
+    this.hotelStayCount = hotelStayCount;
+  }
+
+  @JsonProperty("stay_history")
+  public List<StayRecord> getStayHistory() {
+    return stayHistory;
+  }
+
+  public void setStayHistory(List<StayRecord> stayHistory) {
+    this.stayHistory = stayHistory == null ? new ArrayList<>() : new ArrayList<>(stayHistory);
+  }
+
+  public record StayRecord(
+      @JsonProperty("stay_id") UUID stayId,
+      @JsonProperty("check_in_at") LocalDateTime checkInAt,
+      @JsonProperty("actual_check_out_at") LocalDateTime actualCheckOutAt) {}
 
   public void update(String name, String idProofType, String idProofNumber, String address) {
     this.name = name;

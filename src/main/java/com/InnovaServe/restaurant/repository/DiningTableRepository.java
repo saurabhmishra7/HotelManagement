@@ -10,4 +10,6 @@ public interface DiningTableRepository extends JpaRepository<DiningTable, UUID> 
   Optional<DiningTable> findByTenantIdAndId(UUID t, UUID id);
 
   boolean existsByTenantIdAndTableNumber(UUID t, String tableNumber);
+
+  boolean existsByTenantIdAndTableNumberAndIdNot(UUID t, String tableNumber, UUID id);
 }

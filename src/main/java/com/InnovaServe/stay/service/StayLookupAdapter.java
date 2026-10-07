@@ -7,10 +7,12 @@ import com.InnovaServe.stay.entity.Stay;
 import com.InnovaServe.stay.repository.RoomRepository;
 import com.InnovaServe.stay.repository.StayChargeRepository;
 import com.InnovaServe.stay.repository.StayRepository;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -93,6 +95,35 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
     return stays.findAllByTenantIdAndCustomerIdOrderByCheckInAtDesc(tenantId, customerId).stream()
         .map(stay -> summary(tenantId, stay))
         .toList();
+  }
+
+  @Override
+  public List<CustomerStayStats> findCustomerStayStats(
+      UUID tenantId, Collection<UUID> customerIds) {
+    if (customerIds.isEmpty()) return List.of();
+    return stays.findCustomerStayStats(tenantId, customerIds).stream()
+        .map(row -> new CustomerStayStats(row.getCustomerId(), row.getStayCount()))
+        .toList();
+  }
+
+  @Override
+  public List<CustomerStayRecord> findCustomerStayHistory(
+      UUID tenantId, Collection<UUID> customerIds) {
+    if (customerIds.isEmpty()) return List.of();
+    return stays.findAllByTenantIdAndCustomerIdInOrderByCheckInAtDesc(tenantId, customerIds).stream()
+        .map(stay -> new CustomerStayRecord(
+            stay.getCustomerId(), stay.getId(), stay.getCheckInAt(), stay.getActualCheckOutAt()))
+        .toList();
+  }
+
+  @Override
+  public CustomerIdPage findCustomerIdsByStayHistory(
+      UUID tenantId, boolean hasHotelStay, int page, int size) {
+    var customerPage = hasHotelStay
+        ? stays.findCustomerIdsWithHotelStays(tenantId, PageRequest.of(page, size))
+        : stays.findCustomerIdsWithoutHotelStays(tenantId, PageRequest.of(page, size));
+    return new CustomerIdPage(
+        customerPage.getContent(), customerPage.getTotalElements(), customerPage.getTotalPages());
   }
 
   @Override

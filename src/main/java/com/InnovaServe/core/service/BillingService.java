@@ -41,14 +41,18 @@ public class BillingService {
   }
 
   public List<TaxRule> taxes(String applies) {
+    return taxes(applies, false);
+  }
+
+  public List<TaxRule> taxes(String applies, boolean includeInactive) {
     LocalDate d = LocalDate.now();
     return taxes.findAllByTenantId(tenant.tenantId()).stream()
         .filter(
             x ->
                 (applies == null || applies.equals(x.getAppliesTo()))
                     && taxModuleEnabled(x.getAppliesTo())
-                    && !x.getEffectiveFrom().isAfter(d)
-                    && (x.getEffectiveTo() == null || !x.getEffectiveTo().isBefore(d)))
+                    && (includeInactive || (!x.getEffectiveFrom().isAfter(d)
+                    && (x.getEffectiveTo() == null || !x.getEffectiveTo().isBefore(d)))))
         .toList();
   }
 
@@ -57,6 +61,11 @@ public class BillingService {
       String name, String applies, BigDecimal rate, boolean itc, LocalDate effective) {
     if (!Set.of("room", "restaurant", "other").contains(applies))
       throw new IllegalArgumentException("Invalid tax category");
+    if (name == null || name.isBlank() || name.length() > 100)
+      throw new IllegalArgumentException("Tax rule name is required and must be at most 100 characters");
+    if (rate == null || rate.signum() < 0 || rate.compareTo(new BigDecimal("100")) > 0)
+      throw new IllegalArgumentException("Tax rate must be between 0 and 100");
+    if (effective == null) throw new IllegalArgumentException("Effective start date is required");
     requireTaxModule(applies);
     return taxes.save(new TaxRule(tenant.tenantId(), name, applies, rate, itc, effective));
   }
@@ -68,6 +77,8 @@ public class BillingService {
             .findByTenantIdAndId(tenant.tenantId(), id)
             .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
     requireTaxModule(rule.getAppliesTo());
+    if (to == null || to.isBefore(rule.getEffectiveFrom()))
+      throw new IllegalArgumentException("End date must be on or after the effective start date");
     rule.supersede(to);
     return rule;
   }
@@ -244,8 +255,18 @@ public class BillingService {
         invoices
             .findByTenantIdAndId(tenant.tenantId(), id)
             .orElseThrow(() -> new NoSuchElementException("Invoice not found"));
+    var invoicePayments = payments.findAllByTenantIdAndInvoiceIdOrderByPaidAt(tenant.tenantId(), id);
+    var invoiceCredits = creditNotes.findAllByTenantIdAndOriginalInvoiceIdOrderByCreatedAtDesc(tenant.tenantId(), id);
+    BigDecimal paidTotal = invoicePayments.stream().map(Payment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal creditTotal = invoiceCredits.stream().map(CreditNote::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
     return Map.of(
-        "invoice", i, "line_items", lines.findAllByTenantIdAndInvoiceId(tenant.tenantId(), id));
+        "invoice", i,
+        "line_items", lines.findAllByTenantIdAndInvoiceId(tenant.tenantId(), id),
+        "payments", invoicePayments,
+        "credit_notes", invoiceCredits,
+        "paid_total", paidTotal,
+        "credit_total", creditTotal,
+        "amount_due", i.getTotalAmount().subtract(paidTotal).subtract(creditTotal).max(BigDecimal.ZERO));
   }
 
   public Invoice getInvoice(UUID id) {

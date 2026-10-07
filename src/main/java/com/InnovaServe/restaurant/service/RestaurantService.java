@@ -132,11 +132,11 @@ public class RestaurantService {
   }
 
   @Transactional
-  public DiningTable clearTable(UUID tableId) {
+  public DiningTable markTableDirty(UUID tableId) {
     DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), tableId)
         .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
     if (!"billed".equals(table.getStatus()))
-      throw new IllegalStateException("Create the bill before clearing this table");
+      throw new IllegalStateException("Create the bill before marking this table dirty");
     if (orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open"))
       throw new IllegalStateException("An open order is still linked to this table");
 
@@ -148,17 +148,25 @@ public class RestaurantService {
             tenant.tenantId(), latestOrder.getId()).stream()
         .anyMatch(item -> !Set.of("served", "cancelled").contains(item.getStatus()));
     if (itemsNotServed)
-      throw new IllegalStateException("Serve or cancel every item before clearing the table");
+      throw new IllegalStateException("Serve or cancel every item before marking the table dirty");
 
     RestaurantBill bill = bills.findByTenantIdAndOrderId(tenant.tenantId(), latestOrder.getId())
-        .orElseThrow(() -> new IllegalStateException("Create the bill before clearing this table"));
+        .orElseThrow(() -> new IllegalStateException("Create the bill before marking this table dirty"));
     Invoice invoice = billing.getInvoice(bill.getInvoiceId());
     boolean postedToGuestAccount = "account".equals(bill.getSettlementMode())
         && invoice.getAccountId() != null;
     if (billing.amountDue(invoice).signum() > 0 && !postedToGuestAccount)
       throw new IllegalStateException("Settle the bill before clearing this table");
 
-    table.clear();
+    table.markDirty();
+    return table;
+  }
+
+  @Transactional
+  public DiningTable markTableReady(UUID tableId) {
+    DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), tableId)
+        .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+    table.markReady();
     return table;
   }
 
@@ -182,6 +190,23 @@ public class RestaurantService {
     if (tables.existsByTenantIdAndTableNumber(tenant.tenantId(), normalized))
       throw new IllegalArgumentException("Table number already exists");
     return tables.save(new DiningTable(tenant.tenantId(), normalized, section));
+  }
+
+  @Transactional
+  public DiningTable updateTable(UUID id, String number, String section) {
+    if (number == null || number.isBlank() || number.length() > 10)
+      throw new IllegalArgumentException("Table number is required and must be at most 10 characters");
+    String normalizedNumber = number.trim();
+    if (section != null && section.length() > 50)
+      throw new IllegalArgumentException("Section must be at most 50 characters");
+    DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+    if (!"free".equals(table.getStatus()))
+      throw new IllegalStateException("Only vacant tables can be edited");
+    if (tables.existsByTenantIdAndTableNumberAndIdNot(tenant.tenantId(), normalizedNumber, id))
+      throw new IllegalArgumentException("Table number already exists");
+    table.updateDetails(normalizedNumber, section == null || section.isBlank() ? null : section.trim());
+    return table;
   }
 
   @Transactional
@@ -364,7 +389,7 @@ public class RestaurantService {
 
   public List<Map<String, Object>> itemsForBatch(UUID id) {
     kot(id);
-    return orderItems.findAllByTenantIdAndKotBatchId(tenant.tenantId(), id).stream()
+    return orderItems.findAllByTenantIdAndKotBatchIdOrderByPlacedAtAscIdAsc(tenant.tenantId(), id).stream()
         .map(this::kitchenItem)
         .toList();
   }

@@ -127,8 +127,8 @@ class BearerTokenFilter extends OncePerRequestFilter {
             user.getRoleId() == null
                 ? null
                 : roles.findByTenantIdAndId(tenantId, user.getRoleId()).orElse(null);
-        if (role != null && role.getPermissions() != null) {
-          Collection<?> permissions = role.getPermissions();
+        if (role != null) {
+          Collection<?> permissions = role.getPermissions() == null ? List.of() : role.getPermissions();
           for (Object permission : permissions) {
             try {
               authorities.add(

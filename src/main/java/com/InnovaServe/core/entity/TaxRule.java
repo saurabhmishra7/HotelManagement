@@ -38,6 +38,14 @@ public class TaxRule extends TenantEntity {
     effectiveFrom = from;
   }
 
+  public String getName() {
+    return name;
+  }
+
+  public boolean isItcEligible() {
+    return itcEligible;
+  }
+
   public BigDecimal getRatePercent() {
     return ratePercent;
   }

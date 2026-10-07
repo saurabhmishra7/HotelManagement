@@ -118,10 +118,22 @@ public class RestaurantController {
     return service.addTable(r.tableNumber(), r.section());
   }
 
-  @PostMapping("/dining-tables/{id}/clear")
+  @PatchMapping("/dining-tables/{id}")
+  @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
+  public DiningTable updateTable(@PathVariable UUID id, @RequestBody DiningTableRequest r) {
+    return service.updateTable(id, r.tableNumber(), r.section());
+  }
+
+  @PostMapping("/dining-tables/{id}/dirty")
   @PreAuthorize("hasAuthority('PERM_TABLE_CLEAR')")
-  public DiningTable clearTable(@PathVariable UUID id) {
-    return service.clearTable(id);
+  public DiningTable markTableDirty(@PathVariable UUID id) {
+    return service.markTableDirty(id);
+  }
+
+  @PostMapping("/dining-tables/{id}/ready")
+  @PreAuthorize("hasAuthority('PERM_TABLE_CLEAR')")
+  public DiningTable markTableReady(@PathVariable UUID id) {
+    return service.markTableReady(id);
   }
 
   @PostMapping("/orders")

@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
   List<OrderItem> findAllByTenantIdAndOrderId(UUID t, UUID order);
 
-  List<OrderItem> findAllByTenantIdAndKotBatchId(UUID t, UUID batch);
+  List<OrderItem> findAllByTenantIdAndKotBatchIdOrderByPlacedAtAscIdAsc(UUID t, UUID batch);
 
   Optional<OrderItem> findByTenantIdAndOrderIdAndId(UUID t, UUID order, UUID id);
 

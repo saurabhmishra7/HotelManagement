@@ -46,7 +46,12 @@ public class StaffUserService {
     response.put("email", user.getEmail());
     response.put("role_id", user.getRoleId());
     response.put("role_name", role == null ? "STAFF" : role.getName());
-    response.put("permissions", role == null ? List.of() : role.getPermissions());
+    response.put("permissions", org.springframework.security.core.context.SecurityContextHolder
+        .getContext().getAuthentication().getAuthorities().stream()
+        .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+        .filter(authority -> authority.startsWith("PERM_"))
+        .map(authority -> authority.substring("PERM_".length()))
+        .distinct().sorted().toList());
     return response;
   }
 

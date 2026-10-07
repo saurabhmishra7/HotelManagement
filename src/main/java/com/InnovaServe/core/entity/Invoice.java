@@ -107,6 +107,10 @@ public class Invoice extends TenantEntity {
     return status;
   }
 
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
   public LocalDateTime getLockedAt() {
     return lockedAt;
   }

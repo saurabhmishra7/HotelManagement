@@ -24,6 +24,7 @@ public class StayService {
   private final CustomerRepository customerRepository;
   private final TenantContext tenant;
   private final BillingService billing;
+  private final TenantProfileService profile;
 
   public StayService(
       RoomRepository rooms,
@@ -34,7 +35,8 @@ public class StayService {
       CustomerService customers,
       CustomerRepository customerRepository,
       TenantContext tenant,
-      BillingService billing) {
+      BillingService billing,
+      TenantProfileService profile) {
     this.rooms = rooms;
     this.stays = stays;
     this.charges = charges;
@@ -44,6 +46,7 @@ public class StayService {
     this.customerRepository = customerRepository;
     this.tenant = tenant;
     this.billing = billing;
+    this.profile = profile;
   }
 
   public List<Room> rooms() {
@@ -122,6 +125,7 @@ public class StayService {
   @Transactional
   public Stay checkIn(CheckIn r) {
     UUID tid = tenant.tenantId();
+    profile.requireMealPlan(r.plan() == null ? "EP" : r.plan());
     Room room =
         rooms
             .lockByTenantIdAndId(tid, r.roomId())
@@ -325,6 +329,7 @@ public class StayService {
     if (request.plan() == null || !Set.of("EP", "CP", "MAP", "AP").contains(request.plan())) {
       throw new IllegalArgumentException("Invalid meal plan");
     }
+    if (!request.plan().equals(stay.getPlan())) profile.requireMealPlan(request.plan());
     if (request.tariff() == null || request.tariff().signum() <= 0) {
       throw new IllegalArgumentException("Nightly tariff must be greater than zero");
     }
@@ -393,27 +398,13 @@ public class StayService {
     if (normalizedAmount.signum() <= 0) {
       throw new IllegalArgumentException("Charge amount must be at least 0.01");
     }
-    StayCharge charge =
-        charges.saveAndFlush(
-            new StayCharge(
-                tenant.tenantId(), stayId, description.trim(), normalizedAmount, tenant.userId()));
-    UUID taxId =
-        billing.taxes("room").stream()
-            .findFirst()
-            .map(com.InnovaServe.core.entity.TaxRule::getId)
-            .orElse(null);
-    var invoice =
-        billing.createInvoice(
-            new BillingService.NewInvoice(
-                stay.getAccountId(),
-                stay.getCustomerId(),
-                "stay",
-                List.of(
-                    new BillingService.LineInput(
-                        charge.getDescription(), BigDecimal.ONE, normalizedAmount, taxId))));
-    billing.lock(invoice.invoice().getId());
-    charge.setInvoiceId(invoice.invoice().getId());
-    return charge;
+    if (stay.getCheckoutInvoiceId() != null) {
+      throw new IllegalStateException(
+          "The final room bill has already been prepared. Extra charges must be added before preparing it.");
+    }
+    return charges.save(
+        new StayCharge(
+            tenant.tenantId(), stayId, description.trim(), normalizedAmount, tenant.userId()));
   }
 
   public List<StayCharge> charges(UUID id) {
@@ -461,22 +452,8 @@ public class StayService {
       stay.setCheckoutInvoiceId(invoice.invoice().getId());
       unbilledCharges.forEach(charge -> charge.setInvoiceId(invoice.invoice().getId()));
     } else if (!unbilledCharges.isEmpty()) {
-      UUID taxId =
-          billing.taxes("room").stream()
-              .findFirst()
-              .map(com.InnovaServe.core.entity.TaxRule::getId)
-              .orElse(null);
-      List<BillingService.LineInput> chargeLines =
-          unbilledCharges.stream()
-              .map(charge -> new BillingService.LineInput(
-                  charge.getDescription(), BigDecimal.ONE, charge.getAmount(), taxId))
-              .toList();
-      var chargeInvoice =
-          billing.createInvoice(
-              new BillingService.NewInvoice(
-                  stay.getAccountId(), stay.getCustomerId(), "stay", chargeLines));
-      billing.lock(chargeInvoice.invoice().getId());
-      unbilledCharges.forEach(charge -> charge.setInvoiceId(chargeInvoice.invoice().getId()));
+      throw new IllegalStateException(
+          "The finalized room bill has unbilled stay charges. Resolve them before checkout; the existing invoice cannot be changed.");
     }
     List<com.InnovaServe.core.entity.Invoice> all = billing.invoicesForAccount(stay.getAccountId());
     BigDecimal due = BigDecimal.ZERO;
@@ -509,6 +486,14 @@ public class StayService {
         stays
             .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
             .orElseThrow(() -> new NoSuchElementException("Stay not found"));
+    requireActiveStay(stay);
+    if (stay.getCheckoutInvoiceId() == null) {
+      throw new IllegalStateException("Prepare the final room bill before confirming checkout.");
+    }
+    if (charges.findAllByTenantIdAndStayId(tenant.tenantId(), stayId).stream()
+        .anyMatch(charge -> charge.getInvoiceId() == null)) {
+      throw new IllegalStateException("Unbilled stay charges must be resolved before checkout.");
+    }
     billing.closeAccount(stay.getAccountId());
     stay.checkout();
     rooms.findByTenantIdAndId(tenant.tenantId(), stay.getRoomId()).orElseThrow().setStatus("dirty");

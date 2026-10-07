@@ -21,8 +21,12 @@ public class CustomerController {
   @PreAuthorize("hasAuthority('PERM_CUSTOMER_READ')")
   public Page<Customer> list(
       @RequestParam(defaultValue = "0") int page,
-      @RequestParam(name = "page_size", defaultValue = "20") int pageSize) {
-    return service.list(page, pageSize);
+      @RequestParam(name = "page_size", defaultValue = "20") int pageSize,
+      @RequestParam(name = "stay_status", defaultValue = "all") String stayStatus) {
+    if (!Set.of("all", "stayed", "no_stay").contains(stayStatus)) {
+      throw new IllegalArgumentException("stay_status must be all, stayed, or no_stay");
+    }
+    return service.list(page, pageSize, stayStatus);
   }
 
   @GetMapping(params = "phone")
@@ -43,6 +47,19 @@ public class CustomerController {
             request.idProofTypeOther(),
             request.address());
     return Map.of("id", result.customer().getId(), "is_new_customer", result.isNew());
+  }
+
+  @PatchMapping("/{id}")
+  @PreAuthorize("hasAuthority('PERM_CUSTOMER_WRITE')")
+  public Customer update(@PathVariable UUID id, @RequestBody CustomerRequest request) {
+    return service.updateProfile(
+        id,
+        request.name(),
+        request.phone(),
+        request.idProofType(),
+        request.idProofNumber(),
+        request.idProofTypeOther(),
+        request.address());
   }
 
   public record CustomerRequest(

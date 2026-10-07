@@ -48,8 +48,9 @@ public class BillingController {
   @GetMapping("/tax-rules")
   @PreAuthorize("hasAuthority('PERM_TAX_READ')")
   public List<TaxRule> taxRules(
-      @RequestParam(name = "applies_to", required = false) String applies) {
-    return service.taxes(applies);
+      @RequestParam(name = "applies_to", required = false) String applies,
+      @RequestParam(name = "include_inactive", defaultValue = "false") boolean includeInactive) {
+    return service.taxes(applies, includeInactive);
   }
 
   @PostMapping("/tax-rules")

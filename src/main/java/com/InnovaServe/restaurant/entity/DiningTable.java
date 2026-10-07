@@ -39,9 +39,20 @@ public class DiningTable extends TenantEntity {
     status = s;
   }
 
-  public void clear() {
+  public void updateDetails(String number, String section) {
+    this.tableNumber = number;
+    this.section = section;
+  }
+
+  public void markDirty() {
     if (!"billed".equals(status))
-      throw new IllegalStateException("Only billed tables can be marked clear");
+      throw new IllegalStateException("Only billed tables can be marked dirty");
+    status = "dirty";
+  }
+
+  public void markReady() {
+    if (!"dirty".equals(status))
+      throw new IllegalStateException("Only dirty tables can be marked ready");
     status = "free";
   }
 }
