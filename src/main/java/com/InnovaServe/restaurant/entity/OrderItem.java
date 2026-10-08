@@ -94,9 +94,10 @@ public class OrderItem extends TenantEntity {
     preparingAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
-  public void markServed() {
-    if (!"preparing".equals(status))
-      throw new IllegalStateException("Only preparing order items can be marked served");
+  public void markServed(boolean allowDirectFromSent) {
+    if (!"preparing".equals(status) && !(allowDirectFromSent && "sent".equals(status)))
+      throw new IllegalStateException("Only preparing items can be marked served");
+    if ("sent".equals(status)) preparingAt = placedAt;
     status = "served";
     servedAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }

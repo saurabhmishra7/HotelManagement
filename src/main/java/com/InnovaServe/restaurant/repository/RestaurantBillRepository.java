@@ -8,4 +8,6 @@ public interface RestaurantBillRepository extends JpaRepository<RestaurantBill, 
   Optional<RestaurantBill> findByTenantIdAndId(UUID t, UUID id);
 
   Optional<RestaurantBill> findByTenantIdAndOrderId(UUID t, UUID order);
+
+  Optional<RestaurantBill> findByTenantIdAndInvoiceId(UUID t, UUID invoice);
 }

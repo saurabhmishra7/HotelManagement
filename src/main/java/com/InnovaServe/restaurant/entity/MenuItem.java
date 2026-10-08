@@ -84,6 +84,7 @@ public class MenuItem extends TenantEntity {
       String itemCode,
       BigDecimal price,
       UUID taxRuleId,
+      Boolean clearTaxRule,
       String station,
       Boolean vegFlag,
       Boolean active) {
@@ -91,7 +92,8 @@ public class MenuItem extends TenantEntity {
     if (name != null) this.name = name;
     if (itemCode != null) this.itemCode = itemCode.isBlank() ? null : itemCode;
     if (price != null) this.price = price;
-    if (taxRuleId != null) this.taxRuleId = taxRuleId;
+    if (Boolean.TRUE.equals(clearTaxRule)) this.taxRuleId = null;
+    else if (taxRuleId != null) this.taxRuleId = taxRuleId;
     if (station != null) this.station = station;
     if (vegFlag != null) this.vegFlag = vegFlag;
     if (active != null) this.active = active;

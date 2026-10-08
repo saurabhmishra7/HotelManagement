@@ -35,7 +35,7 @@ public class TenantProfileService {
   public Profile profile() {
     Tenant t = tenant();
     return new Profile(t.getName(), t.getTenantCode(), t.getGstin(), t.getAddress(),
-        t.getCheckoutTime(), List.of("EP", "CP", "MAP", "AP").stream()
+        t.getCheckoutTime(), t.getRestaurantServiceMode(), List.of("EP", "CP", "MAP", "AP").stream()
             .filter(t.getMealPlans()::contains).toList(), t.getLogoVersion(),
         presets.findAllByTenantIdOrderByDescriptionAsc(context.tenantId()));
   }
@@ -70,6 +70,15 @@ public class TenantProfileService {
   public void requireMealPlan(String plan) {
     if (!tenant().getMealPlans().contains(plan))
       throw new IllegalArgumentException("This meal plan is not offered by the property");
+  }
+
+  @Transactional
+  public Profile updateRestaurantSettings(RestaurantSettings request) {
+    String mode = request.serviceMode() == null ? "" : request.serviceMode().trim().toLowerCase(Locale.ROOT);
+    if (!Set.of("kitchen_display", "thermal_printer", "both").contains(mode))
+      throw new IllegalArgumentException("Choose Kitchen display, Thermal printer, or Both");
+    lockedTenant().updateRestaurantServiceMode(mode);
+    return profile();
   }
 
   @Transactional
@@ -114,7 +123,10 @@ public class TenantProfileService {
 
   public record Details(String name, String gstin, String address) {}
   public record Rules(LocalTime checkoutTime, List<String> mealPlans) {}
+  public record RestaurantSettings(String serviceMode) {}
   public record PresetInput(String description, BigDecimal amount) {}
-  public record Profile(String name, String tenantCode, String gstin, String address,
-      LocalTime checkoutTime, List<String> mealPlans, UUID logoVersion, List<StayChargePreset> chargePresets) {}
+  public record Profile(
+      String name, String tenantCode, String gstin, String address,
+      LocalTime checkoutTime, String restaurantServiceMode, List<String> mealPlans,
+      UUID logoVersion, List<StayChargePreset> chargePresets) {}
 }

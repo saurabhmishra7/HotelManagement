@@ -4,12 +4,14 @@ import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
 import com.InnovaServe.core.service.*;
 import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.event.InvoiceFullyPaidEvent;
 import com.InnovaServe.contracts.StayLookupPort;
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.repository.*;
 import java.math.*;
 import java.time.*;
 import java.util.*;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class RestaurantService {
   private final TenantContext tenant;
+  private final TenantRepository tenants;
   private final MenuCategoryRepository categories;
   private final MenuItemRepository items;
   private final DiningTableRepository tables;
@@ -27,9 +30,11 @@ public class RestaurantService {
   private final BillingService billing;
   private final ModuleEntitlementService moduleEntitlements;
   private final StayLookupPort stayLookup;
+  private final TaxRuleRepository taxRules;
 
   public RestaurantService(
       TenantContext t,
+      TenantRepository tenants,
       MenuCategoryRepository c,
       MenuItemRepository i,
       DiningTableRepository tables,
@@ -39,8 +44,10 @@ public class RestaurantService {
       RestaurantBillRepository bills,
       BillingService billing,
       ModuleEntitlementService moduleEntitlements,
-      StayLookupPort stayLookup) {
+      StayLookupPort stayLookup,
+      TaxRuleRepository taxRules) {
     tenant = t;
+    this.tenants = tenants;
     categories = c;
     items = i;
     this.tables = tables;
@@ -51,10 +58,15 @@ public class RestaurantService {
     this.billing = billing;
     this.moduleEntitlements = moduleEntitlements;
     this.stayLookup = stayLookup;
+    this.taxRules = taxRules;
   }
 
   public List<MenuCategory> categories() {
     return categories.findAllByTenantIdOrderBySortOrderAscNameAsc(tenant.tenantId());
+  }
+
+  public List<TaxRule> restaurantTaxRules() {
+    return billing.taxes("restaurant", true);
   }
 
   @Transactional
@@ -95,6 +107,7 @@ public class RestaurantService {
       String itemCode,
       java.math.BigDecimal price,
       UUID taxRuleId,
+      Boolean clearTaxRule,
       String station,
       Boolean vegFlag,
       Boolean active) {
@@ -111,7 +124,7 @@ public class RestaurantService {
       ensureItemCodeAvailable(normalizedCode, id);
       itemCode = normalizedCode == null ? "" : normalizedCode;
     }
-    item.update(categoryId, name, itemCode, price, taxRuleId, station, vegFlag, active);
+    item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, active);
     return item;
   }
 
@@ -246,11 +259,80 @@ public class RestaurantService {
         .orElseThrow(() -> new NoSuchElementException("Order not found"));
   }
 
+  public Map<String, Object> orderDetails(UUID id) {
+    RestaurantOrder order = getOrder(id);
+    Map<String, Object> details = new LinkedHashMap<>();
+    details.put("order", order);
+    details.put("items", orderItemsView(id));
+    bills.findByTenantIdAndOrderId(tenant.tenantId(), id).ifPresent(bill -> {
+      details.put("restaurant_bill", bill);
+      details.put("invoice_details", billing.invoice(bill.getInvoiceId()));
+    });
+    if (!details.containsKey("invoice_details")) {
+      details.put("bill_preview", billPreview(id));
+    }
+    return details;
+  }
+
+  private Map<String, Object> billPreview(UUID orderId) {
+    BigDecimal subtotal = BigDecimal.ZERO;
+    BigDecimal taxTotal = BigDecimal.ZERO;
+    List<Map<String, Object>> lines = new ArrayList<>();
+    LocalDate today = LocalDate.now();
+    Map<UUID, MenuItem> menuItemsById = items.findAllByTenantIdOrderByName(tenant.tenantId())
+        .stream().collect(java.util.stream.Collectors.toMap(MenuItem::getId, item -> item));
+    Map<UUID, TaxRule> taxRulesById = taxRules.findAllByTenantId(tenant.tenantId())
+        .stream().collect(java.util.stream.Collectors.toMap(TaxRule::getId, rule -> rule));
+
+    for (OrderItem orderItem : orderItems(orderId)) {
+      if ("cancelled".equals(orderItem.getStatus())) continue;
+      MenuItem menuItem = Optional.ofNullable(menuItemsById.get(orderItem.getMenuItemId()))
+          .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
+      BigDecimal quantity = BigDecimal.valueOf(orderItem.getQuantity());
+      BigDecimal unitPrice = menuItem.getPrice();
+      BigDecimal base = quantity.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
+      BigDecimal rate = BigDecimal.ZERO;
+
+      if (menuItem.getTaxRuleId() != null) {
+        TaxRule taxRule = Optional.ofNullable(taxRulesById.get(menuItem.getTaxRuleId()))
+            .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
+        if (!taxRule.getEffectiveFrom().isAfter(today)
+            && (taxRule.getEffectiveTo() == null || !taxRule.getEffectiveTo().isBefore(today))) {
+          rate = taxRule.getRatePercent();
+        }
+      }
+
+      BigDecimal tax = base.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+      BigDecimal lineTotal = base.add(tax);
+      subtotal = subtotal.add(base);
+      taxTotal = taxTotal.add(tax);
+      Map<String, Object> line = new LinkedHashMap<>();
+      line.put("description", menuItem.getName());
+      line.put("quantity", quantity);
+      line.put("unitPrice", unitPrice);
+      line.put("taxAmount", tax);
+      line.put("lineTotal", lineTotal);
+      lines.add(line);
+    }
+
+    return Map.of(
+        "line_items", lines,
+        "subtotal", subtotal,
+        "tax_amount", taxTotal,
+        "total_amount", subtotal.add(taxTotal),
+        "paid_total", BigDecimal.ZERO,
+        "credit_total", BigDecimal.ZERO,
+        "amount_due", subtotal.add(taxTotal));
+  }
+
   public List<RestaurantOrder> orders() {
     return orders.findAllByTenantIdOrderByCreatedAtDesc(tenant.tenantId());
   }
 
   public List<Map<String, Object>> tableService() {
+    List<DiningTable> diningTables = tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());
+    Map<UUID, String> tableStatuses = diningTables.stream()
+        .collect(java.util.stream.Collectors.toMap(DiningTable::getId, DiningTable::getStatus));
     List<RestaurantOrder> openDineInOrders =
         orders.findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
             tenant.tenantId(), "dine_in", "open");
@@ -259,9 +341,31 @@ public class RestaurantService {
       Map<String, Object> orderView = new LinkedHashMap<>();
       orderView.put("order", order);
       orderView.put("items", orderItems(order.getId()).stream().map(this::kitchenItem).toList());
+      bills.findByTenantIdAndOrderId(tenant.tenantId(), order.getId()).ifPresent(bill -> {
+        orderView.put("restaurant_bill", bill);
+        orderView.put("invoice_details", billing.invoice(bill.getInvoiceId()));
+      });
       ordersByTable.computeIfAbsent(order.getTableId(), ignored -> new ArrayList<>()).add(orderView);
     }
-    return tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId()).stream()
+    Set<UUID> billedOrderTablesAdded = new HashSet<>();
+    List<RestaurantOrder> billedDineInOrders =
+        orders.findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
+            tenant.tenantId(), "dine_in", "billed");
+    for (RestaurantOrder order : billedDineInOrders) {
+      UUID tableId = order.getTableId();
+      if (!"billed".equals(tableStatuses.get(tableId))
+          || ordersByTable.containsKey(tableId)
+          || !billedOrderTablesAdded.add(tableId)) continue;
+      Map<String, Object> orderView = new LinkedHashMap<>();
+      orderView.put("order", order);
+      orderView.put("items", orderItems(order.getId()).stream().map(this::kitchenItem).toList());
+      bills.findByTenantIdAndOrderId(tenant.tenantId(), order.getId()).ifPresent(bill -> {
+        orderView.put("restaurant_bill", bill);
+        orderView.put("invoice_details", billing.invoice(bill.getInvoiceId()));
+      });
+      ordersByTable.put(tableId, new ArrayList<>(List.of(orderView)));
+    }
+    return diningTables.stream()
         .map(table -> {
           Map<String, Object> tableView = new LinkedHashMap<>();
           tableView.put("table", table);
@@ -319,6 +423,8 @@ public class RestaurantService {
   public Map<String, Object> addItems(UUID orderId, List<ItemRequest> request) {
     RestaurantOrder order = getOrder(orderId);
     if (!"open".equals(order.getStatus())) throw new IllegalStateException("Order is not open");
+    if (bills.findByTenantIdAndOrderId(tenant.tenantId(), orderId).isPresent())
+      throw new IllegalStateException("A bill is already prepared for this order; no more items can be added");
     UUID t = tenant.tenantId();
     Map<String, List<OrderItem>> stationItems = new LinkedHashMap<>();
     for (ItemRequest r : request) {
@@ -333,6 +439,7 @@ public class RestaurantService {
     }
     List<KotBatch> savedBatches = new ArrayList<>();
     List<OrderItem> savedItems = new ArrayList<>();
+    Map<UUID, List<OrderItem>> itemsByBatch = new LinkedHashMap<>();
     for (var entry : stationItems.entrySet()) {
       short number =
           (short) (batches.findAllByTenantIdAndOrderIdOrderByBatchNumber(t, orderId).size() + 1);
@@ -342,8 +449,10 @@ public class RestaurantService {
         item.send(batch.getId());
         savedItems.add(item);
       }
+      itemsByBatch.put(batch.getId(), entry.getValue());
     }
-    return Map.of("kot_batches", savedBatches, "order_items", savedItems);
+    return Map.of("kot_batches", savedBatches, "order_items", savedItems,
+        "print_tickets", kotPrintTickets(savedBatches, itemsByBatch));
   }
 
   public List<RestaurantOrder> pendingGuestOrders() {
@@ -367,6 +476,7 @@ public class RestaurantService {
       byStation.computeIfAbsent(menuItem.getStation(), ignored -> new ArrayList<>()).add(item);
     }
     List<KotBatch> createdBatches = new ArrayList<>();
+    Map<UUID, List<OrderItem>> itemsByBatch = new LinkedHashMap<>();
     for (Map.Entry<String, List<OrderItem>> entry : byStation.entrySet()) {
       short batchNumber =
           (short)
@@ -377,14 +487,33 @@ public class RestaurantService {
           batches.save(new KotBatch(tenant.tenantId(), orderId, entry.getKey(), batchNumber));
       entry.getValue().forEach(item -> item.send(batch.getId()));
       createdBatches.add(batch);
+      itemsByBatch.put(batch.getId(), entry.getValue());
     }
-    return Map.of("order", order, "kot_batches", createdBatches);
+    return Map.of("order", order, "kot_batches", createdBatches,
+        "print_tickets", kotPrintTickets(createdBatches, itemsByBatch));
+  }
+
+  private List<Map<String, Object>> kotPrintTickets(
+      List<KotBatch> createdBatches, Map<UUID, List<OrderItem>> itemsByBatch) {
+    return createdBatches.stream().map(batch -> {
+      Map<String, Object> ticket = new LinkedHashMap<>();
+      ticket.put("id", batch.getId());
+      ticket.put("station", batch.getStation());
+      ticket.put("batch_number", batch.getBatchNumber());
+      ticket.put("items", itemsByBatch.getOrDefault(batch.getId(), List.of()).stream()
+          .map(this::kitchenItem).toList());
+      return ticket;
+    }).toList();
   }
 
   public KotBatch kot(UUID id) {
     return batches
         .findByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
+  }
+
+  public List<Map<String, Object>> orderItemsView(UUID id) {
+    return orderItems(id).stream().map(this::kitchenItem).toList();
   }
 
   public List<Map<String, Object>> itemsForBatch(UUID id) {
@@ -420,8 +549,10 @@ public class RestaurantService {
   public List<Map<String, Object>> pendingKots(String station) {
     if (station != null && !Set.of("kitchen", "bar").contains(station))
       throw new IllegalArgumentException("station must be kitchen or bar");
-    return batches.findAllByTenantIdAndPrintedAtIsNull(tenant.tenantId()).stream()
+    return batches.findAllByTenantId(tenant.tenantId()).stream()
         .filter(batch -> station == null || station.equals(batch.getStation()))
+        .filter(batch -> orderItems.existsByTenantIdAndKotBatchIdAndStatusNotIn(
+            tenant.tenantId(), batch.getId(), List.of("served", "cancelled")))
         .sorted(Comparator.comparing(KotBatch::getBatchNumber))
         .map(
             batch ->
@@ -447,7 +578,11 @@ public class RestaurantService {
         orderItems
             .findByTenantIdAndId(tenant.tenantId(), itemId)
             .orElseThrow(() -> new NoSuchElementException("Order item not found"));
-    item.markServed();
+    boolean printerOnly = tenants.findById(tenant.tenantId())
+        .map(Tenant::getRestaurantServiceMode)
+        .filter("thermal_printer"::equals)
+        .isPresent();
+    item.markServed(printerOnly);
     return item;
   }
 
@@ -461,25 +596,28 @@ public class RestaurantService {
   @Transactional
   public Map<String, Object> generateBill(UUID orderId) {
     RestaurantOrder order = getOrder(orderId);
-    if (!"open".equals(order.getStatus())) {
-      RestaurantBill existing =
-          bills
-              .findByTenantIdAndOrderId(tenant.tenantId(), orderId)
-              .orElseThrow(() -> new IllegalStateException("Order is not billable"));
-      Invoice invoice = billing.getInvoice(existing.getInvoiceId());
+    var existing = bills.findByTenantIdAndOrderId(tenant.tenantId(), orderId);
+    if (existing.isPresent()) {
+      RestaurantBill existingBill = existing.get();
+      Invoice invoice = billing.getInvoice(existingBill.getInvoiceId());
       return Map.of(
           "restaurant_bill_id",
-          existing.getId(),
+          existingBill.getId(),
           "invoice_id",
           invoice.getId(),
           "total_amount",
-          invoice.getTotalAmount().toPlainString());
+          invoice.getTotalAmount().toPlainString(),
+          "invoice_details",
+          billing.invoice(invoice.getId()));
     }
+    if (!"open".equals(order.getStatus())) throw new IllegalStateException("Order is not billable");
     List<OrderItem> ordered =
         orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), orderId).stream()
             .filter(x -> !"cancelled".equals(x.getStatus()))
             .toList();
     if (ordered.isEmpty()) throw new IllegalStateException("Cannot bill an empty order");
+    if (ordered.stream().anyMatch(item -> !"served".equals(item.getStatus())))
+      throw new IllegalStateException("Serve every order item before creating the bill");
     List<BillingService.LineInput> lines = new ArrayList<>();
     for (OrderItem oi : ordered) {
       MenuItem menu =
@@ -506,18 +644,15 @@ public class RestaurantService {
     billing.lock(result.invoice().getId());
     RestaurantBill bill =
         bills.save(new RestaurantBill(tenant.tenantId(), orderId, result.invoice().getId()));
-    order.markBilled();
-    if (order.getTableId() != null)
-      tables
-          .findByTenantIdAndId(tenant.tenantId(), order.getTableId())
-          .ifPresent(table -> table.setStatus("billed"));
     return Map.of(
         "restaurant_bill_id",
         bill.getId(),
         "invoice_id",
         result.invoice().getId(),
         "total_amount",
-        result.totalAmount().toPlainString());
+        result.totalAmount().toPlainString(),
+        "invoice_details",
+        billing.invoice(result.invoice().getId()));
   }
 
   @Transactional
@@ -554,6 +689,11 @@ public class RestaurantService {
       order.associateStay(stay.id());
       invoice.associateCustomerIfMissing(stay.customerId());
       billing.postInvoiceToAccount(stay.accountId(), invoice.getId());
+      order.markBilled();
+      if (order.getTableId() != null) {
+        tables.findByTenantIdAndId(tenant.tenantId(), order.getTableId())
+            .ifPresent(table -> table.setStatus("billed"));
+      }
     } else if (billing.amountDue(invoice).signum() > 0) {
       billing.payment(
           invoice.getId(),
@@ -563,6 +703,20 @@ public class RestaurantService {
     }
     bill.settle(mode);
     return "settled";
+  }
+
+  @EventListener
+  @Transactional
+  public void onInvoiceFullyPaid(InvoiceFullyPaidEvent event) {
+    bills.findByTenantIdAndInvoiceId(event.tenantId(), event.invoiceId()).ifPresent(bill ->
+        orders.findByTenantIdAndId(event.tenantId(), bill.getOrderId()).ifPresent(order -> {
+          boolean newlyBilled = !"billed".equals(order.getStatus());
+          if (newlyBilled) order.markBilled();
+          if (newlyBilled && order.getTableId() != null) {
+            tables.findByTenantIdAndId(event.tenantId(), order.getTableId())
+                .ifPresent(table -> table.setStatus("billed"));
+          }
+        }));
   }
 
   public record ItemRequest(UUID menuItemId, short quantity, String notes) {}

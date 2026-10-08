@@ -36,6 +36,9 @@ public class Tenant {
   @Column(name = "checkout_time", nullable = false)
   private LocalTime checkoutTime = LocalTime.of(11, 0);
 
+  @Column(name = "restaurant_service_mode", nullable = false, length = 20)
+  private String restaurantServiceMode = "kitchen_display";
+
   @ElementCollection
   @CollectionTable(name = "tenant_meal_plan", schema = "core",
       joinColumns = @JoinColumn(name = "tenant_id"))
@@ -50,6 +53,7 @@ public class Tenant {
   private UUID logoVersion;
 
   public LocalTime getCheckoutTime() { return checkoutTime; }
+  public String getRestaurantServiceMode() { return restaurantServiceMode; }
   @JsonIgnore
   public Set<String> getMealPlans() { return mealPlans; }
   @JsonIgnore
@@ -60,6 +64,10 @@ public class Tenant {
     this.name = name;
     this.gstin = gstin;
     this.address = address;
+  }
+
+  public void updateRestaurantServiceMode(String mode) {
+    this.restaurantServiceMode = mode;
   }
 
   public void updateRules(LocalTime checkoutTime, Set<String> plans) {

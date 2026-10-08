@@ -34,6 +34,13 @@ public class TenantProfileController {
     return service.updateRules(request);
   }
 
+  @PutMapping("/restaurant-settings")
+  @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
+  public TenantProfileService.Profile restaurantSettings(
+      @RequestBody TenantProfileService.RestaurantSettings request) {
+    return service.updateRestaurantSettings(request);
+  }
+
   @PostMapping("/charge-presets")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile addPreset(@RequestBody TenantProfileService.PresetInput request) {

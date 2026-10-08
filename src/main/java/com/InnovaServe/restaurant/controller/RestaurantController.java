@@ -3,6 +3,7 @@ package com.InnovaServe.restaurant.controller;
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.service.RestaurantService;
 import com.InnovaServe.restaurant.service.GuestStaySpendService;
+import com.InnovaServe.core.entity.TaxRule;
 import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -46,6 +47,12 @@ public class RestaurantController {
     return service.categories();
   }
 
+  @GetMapping("/menu-tax-rules")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
+  public List<TaxRule> restaurantTaxRules() {
+    return service.restaurantTaxRules();
+  }
+
   @PostMapping("/menu-categories")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
   public MenuCategory createCategory(@RequestBody CategoryRequest r) {
@@ -83,6 +90,7 @@ public class RestaurantController {
         r.itemCode(),
         r.price(),
         r.taxRuleId(),
+        r.clearTaxRule(),
         r.station(),
         r.vegFlag(),
         r.active());
@@ -163,7 +171,7 @@ public class RestaurantController {
   @GetMapping("/orders/{id}")
   @PreAuthorize("hasAuthority('PERM_ORDER_READ')")
   public Map<String, Object> getOrder(@PathVariable UUID id) {
-    return Map.of("order", service.getOrder(id), "items", service.orderItems(id));
+    return service.orderDetails(id);
   }
 
   @PostMapping("/orders/{id}/bill")
@@ -211,13 +219,13 @@ public class RestaurantController {
   }
 
   @PostMapping("/order-items/{id}/served")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_MANAGE', 'PERM_ORDER_CREATE')")
   public OrderItem markItemServed(@PathVariable UUID id) {
     return service.markItemServed(id);
   }
 
   @PostMapping("/kot-batches/{id}/mark-printed")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_MANAGE', 'PERM_ORDER_CREATE', 'PERM_ORDER_CONFIRM')")
   public Map<String, Object> printed(@PathVariable UUID id) {
     return Map.of("printed_at", service.markPrinted(id).getPrintedAt());
   }
@@ -242,6 +250,7 @@ public class RestaurantController {
       @JsonProperty("item_code") String itemCode,
       BigDecimal price,
       @JsonProperty("tax_rule_id") UUID taxRuleId,
+      @JsonProperty("clear_tax_rule") Boolean clearTaxRule,
       String station,
       @JsonProperty("veg_flag") Boolean vegFlag,
       Boolean active) {}

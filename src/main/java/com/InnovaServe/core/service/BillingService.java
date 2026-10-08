@@ -3,9 +3,11 @@ package com.InnovaServe.core.service;
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
 import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.event.InvoiceFullyPaidEvent;
 import java.math.*;
 import java.time.*;
 import java.util.*;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +22,7 @@ public class BillingService {
   private final TaxRuleRepository taxes;
   private final CreditNoteRepository creditNotes;
   private final ModuleEntitlementService moduleEntitlements;
+  private final ApplicationEventPublisher events;
 
   public BillingService(
       TenantContext t,
@@ -29,7 +32,8 @@ public class BillingService {
       AccountRepository a,
       TaxRuleRepository tax,
       CreditNoteRepository creditNotes,
-      ModuleEntitlementService moduleEntitlements) {
+      ModuleEntitlementService moduleEntitlements,
+      ApplicationEventPublisher events) {
     tenant = t;
     invoices = i;
     lines = l;
@@ -38,6 +42,7 @@ public class BillingService {
     taxes = tax;
     this.creditNotes = creditNotes;
     this.moduleEntitlements = moduleEntitlements;
+    this.events = events;
   }
 
   public List<TaxRule> taxes(String applies) {
@@ -309,6 +314,9 @@ public class BillingService {
     BigDecimal due = amountDue(i);
     boolean over = amount.compareTo(due) > 0;
     Payment p = payments.save(new Payment(tenant.tenantId(), invoiceId, mode, amount, reference));
+    if (due.signum() > 0 && amount.compareTo(due) >= 0) {
+      events.publishEvent(new InvoiceFullyPaidEvent(tenant.tenantId(), invoiceId));
+    }
     return new PaymentResult(p, over);
   }
 
