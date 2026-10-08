@@ -39,6 +39,9 @@ public class Tenant {
   @Column(name = "restaurant_service_mode", nullable = false, length = 20)
   private String restaurantServiceMode = "kitchen_display";
 
+  @Column(name = "ui_palette", nullable = false, length = 16)
+  private String uiPalette = "earth";
+
   @ElementCollection
   @CollectionTable(name = "tenant_meal_plan", schema = "core",
       joinColumns = @JoinColumn(name = "tenant_id"))
@@ -54,6 +57,7 @@ public class Tenant {
 
   public LocalTime getCheckoutTime() { return checkoutTime; }
   public String getRestaurantServiceMode() { return restaurantServiceMode; }
+  public String getUiPalette() { return uiPalette; }
   @JsonIgnore
   public Set<String> getMealPlans() { return mealPlans; }
   @JsonIgnore
@@ -68,6 +72,10 @@ public class Tenant {
 
   public void updateRestaurantServiceMode(String mode) {
     this.restaurantServiceMode = mode;
+  }
+
+  public void updateUiPalette(String palette) {
+    this.uiPalette = palette;
   }
 
   public void updateRules(LocalTime checkoutTime, Set<String> plans) {

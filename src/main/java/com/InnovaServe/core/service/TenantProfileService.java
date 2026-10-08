@@ -35,7 +35,7 @@ public class TenantProfileService {
   public Profile profile() {
     Tenant t = tenant();
     return new Profile(t.getName(), t.getTenantCode(), t.getGstin(), t.getAddress(),
-        t.getCheckoutTime(), t.getRestaurantServiceMode(), List.of("EP", "CP", "MAP", "AP").stream()
+        t.getCheckoutTime(), t.getRestaurantServiceMode(), t.getUiPalette(), List.of("EP", "CP", "MAP", "AP").stream()
             .filter(t.getMealPlans()::contains).toList(), t.getLogoVersion(),
         presets.findAllByTenantIdOrderByDescriptionAsc(context.tenantId()));
   }
@@ -82,6 +82,16 @@ public class TenantProfileService {
   }
 
   @Transactional
+  public Profile updateAppearance(Appearance request) {
+    String palette = request.palette() == null ? "" : request.palette().trim().toLowerCase(Locale.ROOT);
+    if (!Set.of("earth", "sage", "ocean", "berry", "lavender", "forest", "terracotta", "slate")
+        .contains(palette))
+      throw new IllegalArgumentException("Choose one of the available color palettes");
+    lockedTenant().updateUiPalette(palette);
+    return profile();
+  }
+
+  @Transactional
   public Profile savePreset(UUID id, PresetInput request) {
     lockedTenant();
     String description = request.description() == null ? "" : request.description().trim();
@@ -124,9 +134,10 @@ public class TenantProfileService {
   public record Details(String name, String gstin, String address) {}
   public record Rules(LocalTime checkoutTime, List<String> mealPlans) {}
   public record RestaurantSettings(String serviceMode) {}
+  public record Appearance(String palette) {}
   public record PresetInput(String description, BigDecimal amount) {}
   public record Profile(
       String name, String tenantCode, String gstin, String address,
-      LocalTime checkoutTime, String restaurantServiceMode, List<String> mealPlans,
+      LocalTime checkoutTime, String restaurantServiceMode, String uiPalette, List<String> mealPlans,
       UUID logoVersion, List<StayChargePreset> chargePresets) {}
 }
