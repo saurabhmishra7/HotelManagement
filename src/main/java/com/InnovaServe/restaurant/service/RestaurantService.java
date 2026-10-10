@@ -351,39 +351,51 @@ public class RestaurantService {
 
   public List<Map<String, Object>> tableService() {
     List<DiningTable> diningTables = tables.findAllByTenantIdOrderByTableNumber(tenant.tenantId());
-    Map<UUID, String> tableStatuses = diningTables.stream()
-        .collect(java.util.stream.Collectors.toMap(DiningTable::getId, DiningTable::getStatus));
     List<RestaurantOrder> openDineInOrders =
         orders.findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
             tenant.tenantId(), "dine_in", "open");
-    Map<UUID, List<Map<String, Object>>> ordersByTable = new HashMap<>();
-    for (RestaurantOrder order : openDineInOrders) {
-      Map<String, Object> orderView = new LinkedHashMap<>();
-      orderView.put("order", order);
-      orderView.put("items", orderItems(order.getId()).stream().map(this::kitchenItem).toList());
-      bills.findByTenantIdAndOrderId(tenant.tenantId(), order.getId()).ifPresent(bill -> {
-        orderView.put("restaurant_bill", bill);
-        orderView.put("invoice_details", billing.invoice(bill.getInvoiceId()));
-      });
-      ordersByTable.computeIfAbsent(order.getTableId(), ignored -> new ArrayList<>()).add(orderView);
-    }
+    Set<UUID> openTableIds = openDineInOrders.stream()
+        .map(RestaurantOrder::getTableId).collect(java.util.stream.Collectors.toSet());
+    Set<UUID> billedTableIds = diningTables.stream()
+        .filter(table -> "billed".equals(table.getStatus()))
+        .map(DiningTable::getId)
+        .filter(id -> !openTableIds.contains(id))
+        .collect(java.util.stream.Collectors.toSet());
+    List<RestaurantOrder> billedDineInOrders = billedTableIds.isEmpty() ? List.of()
+        : orders.findLatestBilledDineInOrdersForTables(tenant.tenantId(), billedTableIds);
+    List<RestaurantOrder> visibleOrders = new ArrayList<>(openDineInOrders);
     Set<UUID> billedOrderTablesAdded = new HashSet<>();
-    List<RestaurantOrder> billedDineInOrders =
-        orders.findAllByTenantIdAndOrderTypeAndStatusAndTableIdIsNotNullOrderByCreatedAtDesc(
-            tenant.tenantId(), "dine_in", "billed");
     for (RestaurantOrder order : billedDineInOrders) {
-      UUID tableId = order.getTableId();
-      if (!"billed".equals(tableStatuses.get(tableId))
-          || ordersByTable.containsKey(tableId)
-          || !billedOrderTablesAdded.add(tableId)) continue;
-      Map<String, Object> orderView = new LinkedHashMap<>();
-      orderView.put("order", order);
-      orderView.put("items", orderItems(order.getId()).stream().map(this::kitchenItem).toList());
-      bills.findByTenantIdAndOrderId(tenant.tenantId(), order.getId()).ifPresent(bill -> {
-        orderView.put("restaurant_bill", bill);
-        orderView.put("invoice_details", billing.invoice(bill.getInvoiceId()));
-      });
-      ordersByTable.put(tableId, new ArrayList<>(List.of(orderView)));
+      if (!billedOrderTablesAdded.add(order.getTableId())) continue;
+      visibleOrders.add(order);
+    }
+    Map<UUID, List<Map<String, Object>>> ordersByTable = new HashMap<>();
+    if (!visibleOrders.isEmpty()) {
+      List<UUID> orderIds = visibleOrders.stream().map(RestaurantOrder::getId).toList();
+      List<OrderItem> visibleItems = orderItems.findAllByTenantIdAndOrderIdIn(tenant.tenantId(), orderIds);
+      Set<UUID> menuItemIds = visibleItems.stream().map(OrderItem::getMenuItemId)
+          .collect(java.util.stream.Collectors.toSet());
+      Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
+          : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
+              .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+      Map<UUID, List<Map<String, Object>>> itemsByOrder = new HashMap<>();
+      for (OrderItem item : visibleItems) {
+        itemsByOrder.computeIfAbsent(item.getOrderId(), ignored -> new ArrayList<>())
+            .add(kitchenItem(item, menuNames));
+      }
+      Map<UUID, RestaurantBill> billsByOrder = bills.findAllByTenantIdAndOrderIdIn(tenant.tenantId(), orderIds)
+          .stream().collect(java.util.stream.Collectors.toMap(RestaurantBill::getOrderId, bill -> bill));
+      for (RestaurantOrder order : visibleOrders) {
+        Map<String, Object> orderView = new LinkedHashMap<>();
+        orderView.put("order", order);
+        orderView.put("items", itemsByOrder.getOrDefault(order.getId(), List.of()));
+        RestaurantBill bill = billsByOrder.get(order.getId());
+        if (bill != null) {
+          orderView.put("restaurant_bill", bill);
+          orderView.put("invoice_details", billing.invoice(bill.getInvoiceId()));
+        }
+        ordersByTable.computeIfAbsent(order.getTableId(), ignored -> new ArrayList<>()).add(orderView);
+      }
     }
     return diningTables.stream()
         .map(table -> {
@@ -544,15 +556,20 @@ public class RestaurantService {
   }
 
   private Map<String, Object> kitchenItem(OrderItem orderItem) {
+    String name = items.findByTenantIdAndId(tenant.tenantId(), orderItem.getMenuItemId())
+        .map(MenuItem::getName).orElse("Unavailable menu item");
+    return kitchenItem(orderItem, name);
+  }
+
+  private Map<String, Object> kitchenItem(OrderItem orderItem, Map<UUID, String> menuNames) {
+    return kitchenItem(orderItem, menuNames.getOrDefault(orderItem.getMenuItemId(), "Unavailable menu item"));
+  }
+
+  private Map<String, Object> kitchenItem(OrderItem orderItem, String name) {
     Map<String, Object> item = new LinkedHashMap<>();
     item.put("id", orderItem.getId());
     item.put("menu_item_id", orderItem.getMenuItemId());
-    item.put(
-        "name",
-        items
-            .findByTenantIdAndId(tenant.tenantId(), orderItem.getMenuItemId())
-            .map(MenuItem::getName)
-            .orElse("Unavailable menu item"));
+    item.put("name", name);
     item.put("quantity", orderItem.getQuantity());
     item.put("notes", orderItem.getNotes());
     item.put("status", orderItem.getStatus());
