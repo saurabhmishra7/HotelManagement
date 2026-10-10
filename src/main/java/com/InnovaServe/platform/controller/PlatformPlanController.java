@@ -53,8 +53,7 @@ public class PlatformPlanController {
   @PreAuthorize("hasAuthority('PLATFORM_PLANS_MANAGE')")
   public Map<String, Object> update(
       @PathVariable UUID id, @RequestBody PlanChangeRequest request) {
-    return PlatformPlanService.snapshot(
-        plans.update(
+    return plans.update(
             id,
             request.name(),
             request.price(),
@@ -62,7 +61,7 @@ public class PlatformPlanController {
             request.duration(),
             request.modules(),
             request.active(),
-            currentAdminId()));
+            currentAdminId());
   }
 
   private UUID currentAdminId() {

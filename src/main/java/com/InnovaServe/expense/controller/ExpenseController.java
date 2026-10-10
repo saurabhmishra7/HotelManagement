@@ -76,6 +76,7 @@ public class ExpenseController {
             new ExpenseService.NewExpense(
                 r.categoryId(),
                 r.department(),
+                r.description(),
                 r.vendorName(),
                 r.amount(),
                 r.paymentMode(),
@@ -170,6 +171,7 @@ public class ExpenseController {
   public record ExpenseRequest(
       @JsonProperty("category_id") UUID categoryId,
       String department,
+      String description,
       @JsonProperty("vendor_name") String vendorName,
       BigDecimal amount,
       @JsonProperty("payment_mode") String paymentMode,

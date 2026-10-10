@@ -5,7 +5,8 @@ import java.util.Locale;
 public enum ModuleType {
   STAY("stay"),
   RESTAURANT("restaurant"),
-  EXPENSE("expense");
+  EXPENSE("expense"),
+  INVENTORY("inventory");
 
   private final String key;
 

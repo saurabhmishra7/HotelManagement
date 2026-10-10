@@ -10,8 +10,23 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.util.List;
 
 public interface TenantRepository extends JpaRepository<Tenant, UUID> {
+  interface TenantSummary {
+    UUID getId();
+    String getName();
+    String getTenantCode();
+  }
+
+  @Query("select t.id as id, t.name as name, t.tenantCode as tenantCode from Tenant t "
+      + "where (:search = '' or lower(t.name) like lower(concat('%', :search, '%')) "
+      + "or lower(t.tenantCode) like lower(concat('%', :search, '%'))) order by lower(t.name)")
+  Page<TenantSummary> findTenantSummaries(@Param("search") String search, Pageable pageable);
+
+  @Query("select t.id from Tenant t")
+  List<UUID> findAllTenantIds();
+
   Optional<Tenant> findByTenantCodeIgnoreCase(String tenantCode);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

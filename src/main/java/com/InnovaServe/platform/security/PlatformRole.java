@@ -11,12 +11,14 @@ public enum PlatformRole {
           PlatformPermission.SUBSCRIPTIONS_MANAGE,
           PlatformPermission.ADMINS_MANAGE,
           PlatformPermission.AUDIT_READ,
-          PlatformPermission.SETTINGS_MANAGE)),
+          PlatformPermission.SETTINGS_MANAGE,
+          PlatformPermission.NOTIFICATIONS_MANAGE)),
   TENANT_MANAGER(
       Set.of(
           PlatformPermission.TENANTS_READ,
           PlatformPermission.PLANS_READ,
-          PlatformPermission.SUBSCRIPTIONS_MANAGE)),
+          PlatformPermission.SUBSCRIPTIONS_MANAGE,
+          PlatformPermission.NOTIFICATIONS_MANAGE)),
   PLAN_MANAGER(
       Set.of(
           PlatformPermission.TENANTS_READ,

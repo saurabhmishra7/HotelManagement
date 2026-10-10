@@ -13,6 +13,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface PlanRepository extends JpaRepository<Plan, UUID> {
   List<Plan> findAllByOrderByNameAscVersionDesc();
 
+  List<Plan> findAllByFamilyId(UUID familyId);
+
   List<Plan> findAllByActiveTrueOrderByNameAsc();
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

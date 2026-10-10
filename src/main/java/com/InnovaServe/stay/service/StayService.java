@@ -6,6 +6,8 @@ import com.InnovaServe.core.service.*;
 import com.InnovaServe.stay.entity.*;
 import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.repository.*;
+import com.InnovaServe.inventory.event.RoomMarkedCleanEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import java.math.*;
 import java.time.*;
 import java.util.*;
@@ -25,6 +27,7 @@ public class StayService {
   private final TenantContext tenant;
   private final BillingService billing;
   private final TenantProfileService profile;
+  private final ApplicationEventPublisher events;
 
   public StayService(
       RoomRepository rooms,
@@ -36,7 +39,8 @@ public class StayService {
       CustomerRepository customerRepository,
       TenantContext tenant,
       BillingService billing,
-      TenantProfileService profile) {
+      TenantProfileService profile,
+      ApplicationEventPublisher events) {
     this.rooms = rooms;
     this.stays = stays;
     this.charges = charges;
@@ -47,6 +51,7 @@ public class StayService {
     this.tenant = tenant;
     this.billing = billing;
     this.profile = profile;
+    this.events = events;
   }
 
   public List<Room> rooms() {
@@ -117,8 +122,10 @@ public class StayService {
 
   @Transactional
   public Room setRoomStatus(UUID id, String status) {
-    Room r = room(id);
+    Room r = rooms.lockByTenantIdAndId(tenant.tenantId(), id).orElseThrow(() -> new NoSuchElementException("Room not found"));
+    boolean becameClean = !"clean".equals(r.getStatus()) && "clean".equals(status);
     r.setStatus(status);
+    if (becameClean) events.publishEvent(new RoomMarkedCleanEvent(tenant.tenantId(), r.getId(), r.getRoomType()));
     return r;
   }
 

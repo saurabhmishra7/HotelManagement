@@ -19,6 +19,8 @@ public interface TenantSubscriptionRepository extends JpaRepository<TenantSubscr
 
   List<TenantSubscription> findAllByTenantIdIn(List<UUID> tenantIds);
 
+  List<TenantSubscription> findAllByPlanIdInAndStatusIn(List<UUID> planIds, List<String> statuses);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select s from TenantSubscription s where s.id = :id")
   Optional<TenantSubscription> lockById(@Param("id") UUID id);

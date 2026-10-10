@@ -59,6 +59,18 @@ public class RestaurantController {
     return service.addCategory(r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
   }
 
+  @GetMapping("/menu-items/{id}/recipe")
+  @PreAuthorize("hasAuthority('PERM_MENU_READ') and (hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE'))")
+  public Map<String, Object> recipe(@PathVariable UUID id) { return service.recipe(id); }
+
+  @PostMapping("/menu-items/{id}/recipe")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE') and hasAuthority('PERM_INVENTORY_MANAGE')")
+  public Map<String, Object> saveRecipe(@PathVariable UUID id, @RequestBody RecipeRequest request) {
+    List<com.InnovaServe.inventory.service.InventoryService.IngredientRequest> ingredients = request.ingredients() == null ? List.of() : request.ingredients().stream()
+        .map(row -> new com.InnovaServe.inventory.service.InventoryService.IngredientRequest(row.inventoryItemId(), row.quantityRequired())).toList();
+    return service.saveRecipe(id, ingredients);
+  }
+
   @GetMapping("/menu-items")
   @PreAuthorize("hasAuthority('PERM_MENU_READ')")
   public List<MenuItem> items(
@@ -229,6 +241,10 @@ public class RestaurantController {
   public Map<String, Object> printed(@PathVariable UUID id) {
     return Map.of("printed_at", service.markPrinted(id).getPrintedAt());
   }
+
+  public record RecipeRequest(List<RecipeIngredientRequest> ingredients) {}
+  public record RecipeIngredientRequest(@JsonProperty("inventory_item_id") UUID inventoryItemId,
+      @JsonProperty("quantity_required") java.math.BigDecimal quantityRequired) {}
 
   public record CategoryRequest(String name, @JsonProperty("sort_order") Integer sortOrder) {}
 

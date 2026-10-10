@@ -142,6 +142,10 @@ public class TenantSubscription {
     return Set.copyOf(modules);
   }
 
+  public void replaceModules(Set<String> modules) {
+    this.modules = new HashSet<>(modules);
+  }
+
   public void activate() {
     status = "active";
     cancelledAt = null;

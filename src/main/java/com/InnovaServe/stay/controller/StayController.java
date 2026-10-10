@@ -3,6 +3,7 @@ package com.InnovaServe.stay.controller;
 import com.InnovaServe.stay.entity.*;
 import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.service.StayService;
+import com.InnovaServe.inventory.service.InventoryService;
 import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.core.security.RequiresModule;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -17,9 +18,11 @@ import org.springframework.web.bind.annotation.*;
 @RequiresModule(ModuleType.STAY)
 public class StayController {
   private final StayService service;
+  private final InventoryService inventory;
 
-  public StayController(StayService service) {
+  public StayController(StayService service, InventoryService inventory) {
     this.service = service;
+    this.inventory = inventory;
   }
 
   @GetMapping("/rooms")
@@ -29,11 +32,23 @@ public class StayController {
   }
 
   @GetMapping("/room-types")
-  @PreAuthorize("hasAuthority('PERM_ROOM_READ')")
+  @PreAuthorize("hasAuthority('PERM_ROOM_READ') or hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE')")
   public List<RoomTypeOption> roomTypes() {
     return Arrays.stream(RoomType.values())
         .map(type -> new RoomTypeOption(type.name(), type.label()))
         .toList();
+  }
+
+  @GetMapping("/room-types/{type}/par-list")
+  @PreAuthorize("hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE')")
+  public List<Map<String, Object>> roomParList(@PathVariable String type) { return inventory.roomParList(type); }
+
+  @PostMapping("/room-types/{type}/par-list")
+  @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
+  public List<Map<String, Object>> saveRoomParList(@PathVariable String type, @RequestBody RoomParRequest request) {
+    List<InventoryService.IngredientRequest> rows = request.items() == null ? List.of() : request.items().stream()
+        .map(row -> new InventoryService.IngredientRequest(row.inventoryItemId(), row.quantityPerClean())).toList();
+    return inventory.saveRoomParList(type, rows);
   }
 
   @PostMapping("/rooms")
@@ -131,6 +146,10 @@ public class StayController {
   }
 
   public record StatusRequest(String status) {}
+
+  public record RoomParRequest(List<RoomParEntry> items) {}
+  public record RoomParEntry(@JsonProperty("inventory_item_id") UUID inventoryItemId,
+      @JsonProperty("quantity_per_clean") java.math.BigDecimal quantityPerClean) {}
 
   public record RoomTypeOption(String value, String label) {}
 

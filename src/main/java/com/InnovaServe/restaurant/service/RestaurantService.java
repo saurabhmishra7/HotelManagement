@@ -6,6 +6,9 @@ import com.InnovaServe.core.service.*;
 import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.core.event.InvoiceFullyPaidEvent;
 import com.InnovaServe.contracts.StayLookupPort;
+import com.InnovaServe.inventory.event.OrderItemServedEvent;
+import com.InnovaServe.inventory.service.InventoryService;
+import org.springframework.context.ApplicationEventPublisher;
 import com.InnovaServe.restaurant.entity.*;
 import com.InnovaServe.restaurant.repository.*;
 import java.math.*;
@@ -31,6 +34,8 @@ public class RestaurantService {
   private final ModuleEntitlementService moduleEntitlements;
   private final StayLookupPort stayLookup;
   private final TaxRuleRepository taxRules;
+  private final InventoryService inventory;
+  private final ApplicationEventPublisher events;
 
   public RestaurantService(
       TenantContext t,
@@ -45,7 +50,9 @@ public class RestaurantService {
       BillingService billing,
       ModuleEntitlementService moduleEntitlements,
       StayLookupPort stayLookup,
-      TaxRuleRepository taxRules) {
+      TaxRuleRepository taxRules,
+      InventoryService inventory,
+      ApplicationEventPublisher events) {
     tenant = t;
     this.tenants = tenants;
     categories = c;
@@ -59,6 +66,19 @@ public class RestaurantService {
     this.moduleEntitlements = moduleEntitlements;
     this.stayLookup = stayLookup;
     this.taxRules = taxRules;
+    this.inventory = inventory;
+    this.events = events;
+  }
+
+  public Map<String, Object> recipe(UUID menuItemId) {
+    moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.INVENTORY);
+    return inventory.recipe(menuItemId);
+  }
+
+  @Transactional
+  public Map<String, Object> saveRecipe(UUID menuItemId, List<InventoryService.IngredientRequest> ingredients) {
+    moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.INVENTORY);
+    return inventory.saveRecipe(menuItemId, ingredients);
   }
 
   public List<MenuCategory> categories() {
@@ -576,13 +596,14 @@ public class RestaurantService {
   public OrderItem markItemServed(UUID itemId) {
     OrderItem item =
         orderItems
-            .findByTenantIdAndId(tenant.tenantId(), itemId)
+            .lockByTenantIdAndId(tenant.tenantId(), itemId)
             .orElseThrow(() -> new NoSuchElementException("Order item not found"));
     boolean printerOnly = tenants.findById(tenant.tenantId())
         .map(Tenant::getRestaurantServiceMode)
         .filter("thermal_printer"::equals)
         .isPresent();
     item.markServed(printerOnly);
+    events.publishEvent(new OrderItemServedEvent(tenant.tenantId(), item.getMenuItemId(), item.getId(), item.getQuantity()));
     return item;
   }
 

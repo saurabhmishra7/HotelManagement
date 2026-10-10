@@ -61,6 +61,18 @@ public class ExpenseService {
     return categories.save(new ExpenseCategory(tenant.tenantId(), name));
   }
 
+  /** Creates the linked expense row for an inventory purchase using the existing expense rules. */
+  @Transactional
+  public Expense addInventoryPurchaseExpense(String department, String vendorName, BigDecimal amount, String paymentMode) {
+    UUID tenantId = tenant.tenantId();
+    UUID categoryId = categories.findAllByTenantIdOrderByName(tenantId).stream()
+        .filter(category -> "Inventory Purchase".equalsIgnoreCase(category.getName()))
+        .map(ExpenseCategory::getId)
+        .findFirst()
+        .orElseGet(() -> categories.save(new ExpenseCategory(tenantId, "Inventory Purchase")).getId());
+    return addExpense(new NewExpense(categoryId, department, "Inventory purchase", vendorName, amount, paymentMode, null, LocalDate.now()));
+  }
+
   @Transactional
   public Expense addExpense(NewExpense r) {
     UUID tid = tenant.tenantId();
@@ -71,6 +83,8 @@ public class ExpenseService {
       throw new IllegalArgumentException("Invalid department");
     if (!Set.of("cash", "card", "upi", "petty_cash").contains(r.paymentMode()))
       throw new IllegalArgumentException("Invalid payment mode");
+    if (r.description() != null && r.description().length() > 2000)
+      throw new IllegalArgumentException("Description must be at most 2000 characters");
     receiptStorage.requireReceipt(tid, r.receiptFileRef());
     Expense e =
         new Expense(
@@ -78,6 +92,7 @@ public class ExpenseService {
             r.categoryId(),
             r.department(),
             r.vendorName(),
+            r.description() == null || r.description().isBlank() ? null : r.description().trim(),
             r.amount(),
             r.paymentMode(),
             r.receiptFileRef(),
@@ -178,6 +193,7 @@ public class ExpenseService {
               tenant.tenantId(),
               r.getCategoryId(),
               "general",
+              null,
               r.getDescription(),
               r.getAmount(),
               "cash",
@@ -190,6 +206,7 @@ public class ExpenseService {
   public record NewExpense(
       UUID categoryId,
       String department,
+      String description,
       String vendorName,
       BigDecimal amount,
       String paymentMode,

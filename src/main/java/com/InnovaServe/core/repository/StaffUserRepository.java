@@ -27,5 +27,7 @@ public interface StaffUserRepository extends JpaRepository<StaffUser, UUID> {
 
   List<StaffUser> findAllByTenantIdOrderByName(UUID tenantId);
 
+  List<StaffUser> findAllByTenantIdAndActiveTrue(UUID tenantId);
+
   boolean existsByTenantIdAndPhone(UUID tenantId, String phone);
 }

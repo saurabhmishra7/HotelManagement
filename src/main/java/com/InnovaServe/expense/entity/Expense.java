@@ -18,6 +18,9 @@ public class Expense extends TenantEntity {
   @Column(name = "vendor_name", length = 150)
   private String vendorName;
 
+  @Column(columnDefinition = "text")
+  private String description;
+
   @Column(nullable = false, precision = 10, scale = 2)
   private BigDecimal amount;
 
@@ -49,6 +52,7 @@ public class Expense extends TenantEntity {
       UUID category,
       String dept,
       String vendor,
+      String description,
       BigDecimal amount,
       String mode,
       String receipt,
@@ -58,6 +62,7 @@ public class Expense extends TenantEntity {
     categoryId = category;
     department = dept;
     vendorName = vendor;
+    this.description = description;
     this.amount = amount;
     paymentMode = mode;
     receiptFileRef = receipt;
@@ -77,6 +82,7 @@ public class Expense extends TenantEntity {
   public UUID getCategoryId() { return categoryId; }
   public String getDepartment() { return department; }
   public String getVendorName() { return vendorName; }
+  public String getDescription() { return description; }
   public String getPaymentMode() { return paymentMode; }
   public String getReceiptFileRef() { return receiptFileRef; }
   public UUID getEnteredBy() { return enteredBy; }

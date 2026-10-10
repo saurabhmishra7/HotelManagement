@@ -70,6 +70,8 @@ public enum RoleType {
               Permission.KITCHEN_READ,
               Permission.KITCHEN_MANAGE,
               Permission.SERVICE_PERFORMANCE_READ,
+              Permission.INVENTORY_READ,
+              Permission.INVENTORY_MANAGE,
               Permission.BILL_CREATE,
               Permission.BILL_SETTLE,
               Permission.STAY_READ,
