@@ -89,7 +89,8 @@ public class RestaurantController {
         r.price(),
         r.taxRuleId(),
         r.station(),
-        r.vegFlag() == null || r.vegFlag());
+        r.vegFlag() == null || r.vegFlag(),
+        r.foodType());
   }
 
   @PatchMapping("/menu-items/{id}")
@@ -105,6 +106,7 @@ public class RestaurantController {
         r.clearTaxRule(),
         r.station(),
         r.vegFlag(),
+        r.foodType(),
         r.active());
   }
 
@@ -258,7 +260,8 @@ public class RestaurantController {
       BigDecimal price,
       @JsonProperty("tax_rule_id") UUID taxRuleId,
       String station,
-      @JsonProperty("veg_flag") Boolean vegFlag) {}
+      @JsonProperty("veg_flag") Boolean vegFlag,
+      @JsonProperty("food_type") String foodType) {}
 
   public record MenuItemUpdate(
       @JsonProperty("category_id") UUID categoryId,
@@ -269,6 +272,7 @@ public class RestaurantController {
       @JsonProperty("clear_tax_rule") Boolean clearTaxRule,
       String station,
       @JsonProperty("veg_flag") Boolean vegFlag,
+      @JsonProperty("food_type") String foodType,
       Boolean active) {}
 
   public record OpenOrder(

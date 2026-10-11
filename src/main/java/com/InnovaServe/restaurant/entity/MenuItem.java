@@ -3,6 +3,7 @@ package com.InnovaServe.restaurant.entity;
 import com.InnovaServe.core.entity.TenantEntity;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.UUID;
 
 @Entity
@@ -29,13 +30,16 @@ public class MenuItem extends TenantEntity {
   @Column(name = "veg_flag", nullable = false)
   private boolean vegFlag;
 
+  @Column(name = "food_type", nullable = false, length = 10)
+  private String foodType = "VEG";
+
   @Column(nullable = false)
   private boolean active = true;
 
   protected MenuItem() {}
 
   public MenuItem(
-      UUID t, UUID cat, String name, String itemCode, BigDecimal price, UUID tax, String station, boolean veg) {
+      UUID t, UUID cat, String name, String itemCode, BigDecimal price, UUID tax, String station, boolean veg, String foodType) {
     super(t);
     categoryId = cat;
     this.name = name;
@@ -43,7 +47,7 @@ public class MenuItem extends TenantEntity {
     this.price = price;
     taxRuleId = tax;
     this.station = station;
-    vegFlag = veg;
+    setFoodType(foodType == null ? (veg ? "VEG" : "NON_VEG") : foodType);
   }
 
   public UUID getCategoryId() {
@@ -74,6 +78,19 @@ public class MenuItem extends TenantEntity {
     return vegFlag;
   }
 
+  public String getFoodType() {
+    return foodType;
+  }
+
+  private void setFoodType(String value) {
+    String normalized = value.trim().toUpperCase(Locale.ROOT);
+    if (!normalized.equals("VEG") && !normalized.equals("NON_VEG") && !normalized.equals("EGG")) {
+      throw new IllegalArgumentException("Food type must be VEG, NON_VEG, or EGG");
+    }
+    foodType = normalized;
+    vegFlag = normalized.equals("VEG");
+  }
+
   public boolean isActive() {
     return active;
   }
@@ -87,6 +104,7 @@ public class MenuItem extends TenantEntity {
       Boolean clearTaxRule,
       String station,
       Boolean vegFlag,
+      String foodType,
       Boolean active) {
     if (categoryId != null) this.categoryId = categoryId;
     if (name != null) this.name = name;
@@ -95,7 +113,8 @@ public class MenuItem extends TenantEntity {
     if (Boolean.TRUE.equals(clearTaxRule)) this.taxRuleId = null;
     else if (taxRuleId != null) this.taxRuleId = taxRuleId;
     if (station != null) this.station = station;
-    if (vegFlag != null) this.vegFlag = vegFlag;
+    if (foodType != null) setFoodType(foodType);
+    else if (vegFlag != null) setFoodType(vegFlag ? "VEG" : "NON_VEG");
     if (active != null) this.active = active;
   }
 }

@@ -110,13 +110,14 @@ public class RestaurantService {
       java.math.BigDecimal price,
       UUID tax,
       String station,
-      boolean veg) {
+      boolean veg,
+      String foodType) {
     categories
         .findByTenantIdAndId(tenant.tenantId(), cat)
         .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
     String normalizedCode = normalizeItemCode(itemCode);
     ensureItemCodeAvailable(normalizedCode, null);
-    return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg));
+    return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg, foodType));
   }
 
   @Transactional
@@ -130,6 +131,7 @@ public class RestaurantService {
       Boolean clearTaxRule,
       String station,
       Boolean vegFlag,
+      String foodType,
       Boolean active) {
     MenuItem item =
         items
@@ -144,7 +146,7 @@ public class RestaurantService {
       ensureItemCodeAvailable(normalizedCode, id);
       itemCode = normalizedCode == null ? "" : normalizedCode;
     }
-    item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, active);
+    item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, foodType, active);
     return item;
   }
 

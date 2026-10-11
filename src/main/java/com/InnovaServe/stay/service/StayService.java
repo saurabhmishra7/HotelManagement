@@ -388,7 +388,7 @@ public class StayService {
   }
 
   @Transactional
-  public StayCharge addCharge(UUID stayId, String description, BigDecimal amount) {
+  public StayCharge addCharge(UUID stayId, String description, BigDecimal amount, BigDecimal quantity) {
     Stay stay =
         stays
             .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
@@ -401,9 +401,22 @@ public class StayService {
       throw new IllegalArgumentException("Charge amount must be greater than zero");
     }
 
-    BigDecimal normalizedAmount = amount.setScale(2, RoundingMode.HALF_UP);
-    if (normalizedAmount.signum() <= 0) {
+    BigDecimal unitPrice = amount.setScale(2, RoundingMode.HALF_UP);
+    if (unitPrice.signum() <= 0) {
       throw new IllegalArgumentException("Charge amount must be at least 0.01");
+    }
+    int units;
+    try {
+      units = (quantity == null ? BigDecimal.ONE : quantity).intValueExact();
+    } catch (ArithmeticException ex) {
+      throw new IllegalArgumentException("Quantity must be a whole number from 1 to 999");
+    }
+    if (units < 1 || units > 999) {
+      throw new IllegalArgumentException("Quantity must be a whole number from 1 to 999");
+    }
+    BigDecimal total = unitPrice.multiply(BigDecimal.valueOf(units));
+    if (total.compareTo(new BigDecimal("99999999.99")) > 0) {
+      throw new IllegalArgumentException("Total charge cannot exceed 99999999.99");
     }
     if (stay.getCheckoutInvoiceId() != null) {
       throw new IllegalStateException(
@@ -411,7 +424,7 @@ public class StayService {
     }
     return charges.save(
         new StayCharge(
-            tenant.tenantId(), stayId, description.trim(), normalizedAmount, tenant.userId()));
+            tenant.tenantId(), stayId, description.trim(), units, unitPrice, total, tenant.userId()));
   }
 
   public List<StayCharge> charges(UUID id) {
@@ -450,7 +463,7 @@ public class StayService {
               taxId));
       for (StayCharge c : unbilledCharges)
         lines.add(
-            new BillingService.LineInput(c.getDescription(), BigDecimal.ONE, c.getAmount(), taxId));
+            new BillingService.LineInput(c.getDescription(), BigDecimal.valueOf(c.getQuantity()), c.getUnitPrice(), taxId));
       var invoice =
           billing.createInvoice(
               new BillingService.NewInvoice(

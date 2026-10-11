@@ -83,7 +83,8 @@ public class GuestOrderingService {
                         "name", item.getName(),
                         "price", item.getPrice(),
                         "station", item.getStation(),
-                        "veg_flag", item.isVegFlag()))
+                        "veg_flag", item.isVegFlag(),
+                        "food_type", item.getFoodType()))
             .toList();
 
     Map<String, Object> target = new LinkedHashMap<>();
