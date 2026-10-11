@@ -9,6 +9,7 @@ public enum RoleType {
   GENERAL_MANAGER,
   FRONT_DESK,
   HOUSEKEEPING,
+  ROOM_SERVICE_ATTENDANT,
   RESTAURANT_MANAGER,
   WAITER,
   KITCHEN_STAFF,
@@ -55,7 +56,10 @@ public enum RoleType {
               Permission.BILL_CREATE,
               Permission.BILL_SETTLE,
               Permission.APPROVAL_PIN_VERIFY);
-      case HOUSEKEEPING -> EnumSet.of(Permission.ROOM_READ, Permission.HOUSEKEEPING_UPDATE);
+      case HOUSEKEEPING -> EnumSet.of(Permission.ROOM_READ, Permission.HOUSEKEEPING_UPDATE, Permission.ROOM_SERVICE_REQUEST_HANDLE);
+      case ROOM_SERVICE_ATTENDANT -> EnumSet.of(Permission.ROOM_READ, Permission.STAY_READ, Permission.TABLE_READ,
+          Permission.MENU_READ, Permission.ORDER_READ, Permission.ORDER_CONFIRM,
+          Permission.ROOM_SERVICE_REQUEST_HANDLE);
       case RESTAURANT_MANAGER ->
           EnumSet.of(
               Permission.MENU_READ,
@@ -84,6 +88,7 @@ public enum RoleType {
               Permission.TABLE_CLEAR,
               Permission.ORDER_READ,
               Permission.ORDER_CREATE,
+              Permission.ORDER_CONFIRM,
               Permission.BILL_CREATE,
               Permission.BILL_SETTLE,
               Permission.STAY_READ);

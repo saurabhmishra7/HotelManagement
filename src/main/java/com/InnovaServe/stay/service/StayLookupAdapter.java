@@ -62,6 +62,11 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
   }
 
   @Override
+  public Optional<String> findRoomNumber(UUID tenantId, UUID roomId) {
+    return rooms.findByTenantIdAndId(tenantId, roomId).map(com.InnovaServe.stay.entity.Room::getRoomNumber);
+  }
+
+  @Override
   public List<RoomServiceOption> findActiveRoomServiceOptions(UUID tenantId) {
     var roomNumbers =
         rooms.findAllByTenantIdOrderByRoomNumber(tenantId).stream()
@@ -129,7 +134,8 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
   @Override
   public List<StayChargeSummary> findCharges(UUID tenantId, UUID stayId) {
     return charges.findAllByTenantIdAndStayId(tenantId, stayId).stream()
-        .map(charge -> new StayChargeSummary(charge.getId(), charge.getDescription(), charge.getAmount()))
+        .map(charge -> new StayChargeSummary(charge.getId(), charge.getDescription(),
+            charge.getAmount(), charge.getInvoiceId()))
         .toList();
   }
 
