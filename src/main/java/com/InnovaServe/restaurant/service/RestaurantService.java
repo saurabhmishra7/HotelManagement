@@ -33,9 +33,11 @@ public class RestaurantService {
   private final BillingService billing;
   private final ModuleEntitlementService moduleEntitlements;
   private final StayLookupPort stayLookup;
-  private final TaxRuleRepository taxRules;
   private final InventoryService inventory;
   private final ApplicationEventPublisher events;
+  private final NotificationService notifications;
+  private final GuestQrSessionService guestSessions;
+  private final RestaurantBillBreakdownService billBreakdown;
 
   public RestaurantService(
       TenantContext t,
@@ -50,9 +52,11 @@ public class RestaurantService {
       BillingService billing,
       ModuleEntitlementService moduleEntitlements,
       StayLookupPort stayLookup,
-      TaxRuleRepository taxRules,
       InventoryService inventory,
-      ApplicationEventPublisher events) {
+      ApplicationEventPublisher events,
+      NotificationService notifications,
+      GuestQrSessionService guestSessions,
+      RestaurantBillBreakdownService billBreakdown) {
     tenant = t;
     this.tenants = tenants;
     categories = c;
@@ -65,9 +69,11 @@ public class RestaurantService {
     this.billing = billing;
     this.moduleEntitlements = moduleEntitlements;
     this.stayLookup = stayLookup;
-    this.taxRules = taxRules;
     this.inventory = inventory;
     this.events = events;
+    this.notifications = notifications;
+    this.guestSessions = guestSessions;
+    this.billBreakdown = billBreakdown;
   }
 
   public Map<String, Object> recipe(UUID menuItemId) {
@@ -194,6 +200,7 @@ public class RestaurantService {
       throw new IllegalStateException("Settle the bill before clearing this table");
 
     table.markDirty();
+    guestSessions.closeForTable(tenant.tenantId(), tableId);
     return table;
   }
 
@@ -297,54 +304,7 @@ public class RestaurantService {
   }
 
   private Map<String, Object> billPreview(UUID orderId) {
-    BigDecimal subtotal = BigDecimal.ZERO;
-    BigDecimal taxTotal = BigDecimal.ZERO;
-    List<Map<String, Object>> lines = new ArrayList<>();
-    LocalDate today = LocalDate.now();
-    Map<UUID, MenuItem> menuItemsById = items.findAllByTenantIdOrderByName(tenant.tenantId())
-        .stream().collect(java.util.stream.Collectors.toMap(MenuItem::getId, item -> item));
-    Map<UUID, TaxRule> taxRulesById = taxRules.findAllByTenantId(tenant.tenantId())
-        .stream().collect(java.util.stream.Collectors.toMap(TaxRule::getId, rule -> rule));
-
-    for (OrderItem orderItem : orderItems(orderId)) {
-      if ("cancelled".equals(orderItem.getStatus())) continue;
-      MenuItem menuItem = Optional.ofNullable(menuItemsById.get(orderItem.getMenuItemId()))
-          .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
-      BigDecimal quantity = BigDecimal.valueOf(orderItem.getQuantity());
-      BigDecimal unitPrice = menuItem.getPrice();
-      BigDecimal base = quantity.multiply(unitPrice).setScale(2, RoundingMode.HALF_UP);
-      BigDecimal rate = BigDecimal.ZERO;
-
-      if (menuItem.getTaxRuleId() != null) {
-        TaxRule taxRule = Optional.ofNullable(taxRulesById.get(menuItem.getTaxRuleId()))
-            .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
-        if (!taxRule.getEffectiveFrom().isAfter(today)
-            && (taxRule.getEffectiveTo() == null || !taxRule.getEffectiveTo().isBefore(today))) {
-          rate = taxRule.getRatePercent();
-        }
-      }
-
-      BigDecimal tax = base.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-      BigDecimal lineTotal = base.add(tax);
-      subtotal = subtotal.add(base);
-      taxTotal = taxTotal.add(tax);
-      Map<String, Object> line = new LinkedHashMap<>();
-      line.put("description", menuItem.getName());
-      line.put("quantity", quantity);
-      line.put("unitPrice", unitPrice);
-      line.put("taxAmount", tax);
-      line.put("lineTotal", lineTotal);
-      lines.add(line);
-    }
-
-    return Map.of(
-        "line_items", lines,
-        "subtotal", subtotal,
-        "tax_amount", taxTotal,
-        "total_amount", subtotal.add(taxTotal),
-        "paid_total", BigDecimal.ZERO,
-        "credit_total", BigDecimal.ZERO,
-        "amount_due", subtotal.add(taxTotal));
+    return billBreakdown.preview(tenant.tenantId(), orderItems(orderId));
   }
 
   public List<RestaurantOrder> orders() {
@@ -496,11 +456,15 @@ public class RestaurantService {
 
   @Transactional
   public Map<String, Object> confirmGuestOrder(UUID orderId) {
-    RestaurantOrder order = getOrder(orderId);
+    RestaurantOrder order = orders.lockByTenantIdAndId(tenant.tenantId(), orderId)
+        .orElseThrow(() -> new NoSuchElementException("Order not found"));
     if (!"qr_guest".equals(order.getOrderSource()))
       throw new IllegalStateException("Only QR guest orders can be confirmed here");
+    List<OrderItem> pendingItems = orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), orderId)
+        .stream().filter(item -> "pending_confirmation".equals(item.getStatus())).toList();
+    if (pendingItems.isEmpty()) throw new IllegalStateException("No new items are awaiting confirmation");
     order.confirm(tenant.userId());
-    List<OrderItem> pendingItems = orderItems.findAllByTenantIdAndOrderId(tenant.tenantId(), orderId);
+    notifications.qrOrderWasConfirmed(tenant.tenantId(), orderId);
     Map<String, List<OrderItem>> byStation = new LinkedHashMap<>();
     for (OrderItem item : pendingItems) {
       MenuItem menuItem =
@@ -742,6 +706,7 @@ public class RestaurantService {
           null);
     }
     bill.settle(mode);
+    notifications.restaurantBillRequestHandled(tenant.tenantId(), bill.getOrderId());
     return "settled";
   }
 
@@ -752,6 +717,7 @@ public class RestaurantService {
         orders.findByTenantIdAndId(event.tenantId(), bill.getOrderId()).ifPresent(order -> {
           boolean newlyBilled = !"billed".equals(order.getStatus());
           if (newlyBilled) order.markBilled();
+          notifications.restaurantBillRequestHandled(event.tenantId(), order.getId());
           if (newlyBilled && order.getTableId() != null) {
             tables.findByTenantIdAndId(event.tenantId(), order.getTableId())
                 .ifPresent(table -> table.setStatus("billed"));

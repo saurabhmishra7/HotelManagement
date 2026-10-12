@@ -55,6 +55,112 @@ public class NotificationService {
   }
 
   @Transactional
+  public void roomBecameDirty(UUID tenantId, UUID roomId, String roomNumber) {
+    String key = "room-dirty:" + roomId + ":" + UUID.randomUUID();
+    sendToRole(tenantId, "HOUSEKEEPING_UPDATE", "HOUSEKEEPING", "Room " + roomNumber + " needs cleaning",
+        "Room " + roomNumber + " is dirty. Clean it, then mark it clean in Rooms.", "housekeeping", key);
+  }
+
+  @Transactional
+  public void roomWasCleaned(UUID tenantId, UUID roomId) {
+    notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(
+        tenantId, "housekeeping", "room-dirty:" + roomId + ":").forEach(Notification::dismiss);
+  }
+
+  @Transactional
+  public void qrOrderNeedsConfirmation(UUID tenantId, UUID orderId, String location, boolean roomService) {
+    sendToRole(tenantId, "ORDER_CONFIRM", "WAITER",
+        "Confirm QR order for " + location,
+        "A guest placed a " + (roomService ? "room restaurant" : "table") + " order for " + location
+            + ". Confirm it in Restaurant → Orders before it reaches the kitchen.",
+        "restaurant_order", "order-confirm:" + orderId + ":" + UUID.randomUUID());
+  }
+
+  @Transactional
+  public void qrOrderWasConfirmed(UUID tenantId, UUID orderId) {
+    notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(
+        tenantId, "restaurant_order", "order-confirm:" + orderId).forEach(Notification::dismiss);
+  }
+
+  @Transactional
+  public void restaurantBillRequested(UUID tenantId, UUID orderId, String location) {
+    int recipients = sendToRole(tenantId, "BILL_CREATE", "WAITER",
+        "Bill requested for " + location,
+        "A guest at " + location + " requested the bill for order "
+            + orderId.toString().substring(0, 8).toUpperCase(Locale.ROOT)
+            + ". Open Restaurant → Orders to prepare and settle it.",
+        "restaurant_order", "bill-request:" + orderId);
+    if (recipients == 0)
+      throw new IllegalStateException("No staff with billing access are assigned. Please contact the front desk.");
+  }
+
+  @Transactional
+  public void restaurantBillRequestHandled(UUID tenantId, UUID orderId) {
+    notifications.findAllByTenantIdAndSourceAndSourceKeyAndDismissedAtIsNull(
+        tenantId, "restaurant_order", "bill-request:" + orderId).forEach(Notification::dismiss);
+  }
+
+  @Transactional
+  public void roomServiceRequested(UUID tenantId, UUID requestId, String roomNumber, String serviceName, String notes) {
+    String message = "Room " + roomNumber + " requested " + serviceName + "."
+        + (notes == null || notes.isBlank() ? "" : " Guest note: " + notes.trim())
+        + " Open Room service to mark your work done. The guest will confirm receipt separately.";
+    int recipients = sendToRole(tenantId, "ROOM_SERVICE_REQUEST_HANDLE", "ROOM_SERVICE_ATTENDANT",
+        "Room service: " + roomNumber, message, "room_service",
+        "room-service:" + requestId);
+    if (recipients == 0) throw new IllegalStateException("Room service staff are not assigned yet. Please contact the front desk.");
+  }
+
+  @Transactional
+  public void roomServiceAttendantConfirmed(UUID tenantId, UUID requestId) {
+    notifications.findAllByTenantIdAndSourceAndSourceKeyAndDismissedAtIsNull(
+        tenantId, "room_service", "room-service:" + requestId).forEach(Notification::dismiss);
+  }
+
+  @Transactional
+  public void roomServiceCompleted(UUID tenantId, UUID requestId, String roomNumber, String serviceType) {
+    String serviceName = switch (serviceType) {
+      case "cleaning" -> "Room cleaning";
+      case "towels" -> "Fresh towels";
+      case "water" -> "Drinking water";
+      default -> "Room assistance";
+    };
+    String title = "Room service completed: " + roomNumber;
+    String message = serviceName + " for room " + roomNumber + " is complete.";
+    for (StaffUser user : recipients(tenantId, "STAY_CHECKIN", "FRONT_DESK")) {
+      notifications.save(new Notification(tenantId, user.getId(), title, message,
+          "NORMAL", "room_service_completed", "room-service-completed:" + requestId));
+    }
+  }
+
+  private int sendToRole(UUID tenantId, String permission, String preferredRole, String title,
+      String message, String source, String key) {
+    List<StaffUser> recipients = recipients(tenantId, permission, preferredRole);
+    for (StaffUser user : recipients) {
+      notifications.save(new Notification(tenantId, user.getId(), title, message, "IMPORTANT", source, key));
+    }
+    return recipients.size();
+  }
+
+  private List<StaffUser> recipients(UUID tenantId, String permission, String preferredRole) {
+    Map<UUID, StaffRole> roleById = new HashMap<>();
+    roles.findAllByTenantIdOrderByName(tenantId).forEach(role -> roleById.put(role.getId(), role));
+    List<StaffUser> eligible = users.findAllByTenantIdAndActiveTrue(tenantId).stream()
+        .filter(user -> {
+          StaffRole role = roleById.get(user.getRoleId());
+          return role != null && role.getPermissions() != null && role.getPermissions().contains(permission);
+        }).toList();
+    List<StaffUser> preferred = eligible.stream()
+        .filter(user -> preferredRole.equalsIgnoreCase(roleById.get(user.getRoleId()).getName())).toList();
+    if (!preferred.isEmpty()) return preferred;
+    List<StaffUser> specialists = eligible.stream().filter(user -> {
+      String role = roleById.get(user.getRoleId()).getName().toUpperCase(Locale.ROOT);
+      return !Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER", "TENANT_MANAGER").contains(role);
+    }).toList();
+    return specialists.isEmpty() ? eligible : specialists;
+  }
+
+  @Transactional
   public void sendPlatformNotice(Collection<UUID> tenantIds, boolean allTenants, String title, String message) {
     if (allTenants) tenantIds = tenants.findAllTenantIds();
     if (tenantIds == null || tenantIds.isEmpty()) throw new IllegalArgumentException("Choose at least one tenant");

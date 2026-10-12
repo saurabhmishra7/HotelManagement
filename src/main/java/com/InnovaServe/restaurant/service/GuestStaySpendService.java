@@ -98,7 +98,6 @@ public class GuestStaySpendService {
     BigDecimal creditTotal = BigDecimal.ZERO;
     BigDecimal amountDue = BigDecimal.ZERO;
     List<Map<String, Object>> invoiceHistory = new ArrayList<>();
-    List<InvoiceLineItem> stayInvoiceLines = new ArrayList<>();
 
     for (Invoice invoice : invoices.values()) {
       List<InvoiceLineItem> lines =
@@ -122,7 +121,6 @@ public class GuestStaySpendService {
       paidTotal = paidTotal.add(paid);
       creditTotal = creditTotal.add(credited);
       amountDue = amountDue.add(due);
-      if ("stay".equals(invoice.getSourceModule())) stayInvoiceLines.addAll(lines);
 
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("invoice", invoice);
@@ -142,12 +140,8 @@ public class GuestStaySpendService {
             : stayLookup.findCharges(tenantId, stayId).stream()
             .map(
                 charge -> {
-                  boolean invoiced =
-                      stayInvoiceLines.stream()
-                          .anyMatch(
-                              line ->
-                                  line.getDescription().equals(charge.description())
-                                      && line.getUnitPrice().compareTo(charge.amount()) == 0);
+                  boolean invoiced = charge.invoiceId() != null
+                      && invoices.containsKey(charge.invoiceId());
                   return Map.<String, Object>of(
                       "id", charge.id(),
                       "description", charge.description(),

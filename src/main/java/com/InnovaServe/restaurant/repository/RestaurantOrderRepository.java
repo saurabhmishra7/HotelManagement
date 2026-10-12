@@ -2,7 +2,9 @@ package com.InnovaServe.restaurant.repository;
 
 import com.InnovaServe.restaurant.entity.RestaurantOrder;
 import java.util.*;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,7 +34,13 @@ public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder
 
   List<RestaurantOrder> findAllByTenantIdAndStayIdOrderByCreatedAtDesc(UUID t, UUID stayId);
 
+  List<RestaurantOrder> findAllByTenantIdAndGuestSessionIdOrderByCreatedAtAsc(UUID tenantId, UUID guestSessionId);
+
   Optional<RestaurantOrder> findByTenantIdAndId(UUID t, UUID id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select restaurantOrder from RestaurantOrder restaurantOrder where restaurantOrder.tenantId = :tenantId and restaurantOrder.id = :id")
+  Optional<RestaurantOrder> lockByTenantIdAndId(@Param("tenantId") UUID tenantId, @Param("id") UUID id);
 
   List<RestaurantOrder> findAllByTenantIdAndOrderSourceAndConfirmationStatusOrderByCreatedAt(
       UUID t, String source, String status);

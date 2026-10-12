@@ -7,6 +7,7 @@ import com.InnovaServe.stay.entity.*;
 import com.InnovaServe.stay.enums.RoomType;
 import com.InnovaServe.stay.repository.*;
 import com.InnovaServe.inventory.event.RoomMarkedCleanEvent;
+import com.InnovaServe.restaurant.service.GuestQrSessionService;
 import org.springframework.context.ApplicationEventPublisher;
 import java.math.*;
 import java.time.*;
@@ -28,6 +29,8 @@ public class StayService {
   private final BillingService billing;
   private final TenantProfileService profile;
   private final ApplicationEventPublisher events;
+  private final NotificationService notifications;
+  private final GuestQrSessionService guestSessions;
 
   public StayService(
       RoomRepository rooms,
@@ -40,7 +43,9 @@ public class StayService {
       TenantContext tenant,
       BillingService billing,
       TenantProfileService profile,
-      ApplicationEventPublisher events) {
+      ApplicationEventPublisher events,
+      NotificationService notifications,
+      GuestQrSessionService guestSessions) {
     this.rooms = rooms;
     this.stays = stays;
     this.charges = charges;
@@ -52,6 +57,8 @@ public class StayService {
     this.billing = billing;
     this.profile = profile;
     this.events = events;
+    this.notifications = notifications;
+    this.guestSessions = guestSessions;
   }
 
   public List<Room> rooms() {
@@ -124,8 +131,11 @@ public class StayService {
   public Room setRoomStatus(UUID id, String status) {
     Room r = rooms.lockByTenantIdAndId(tenant.tenantId(), id).orElseThrow(() -> new NoSuchElementException("Room not found"));
     boolean becameClean = !"clean".equals(r.getStatus()) && "clean".equals(status);
+    boolean becameDirty = !"dirty".equals(r.getStatus()) && "dirty".equals(status);
     r.setStatus(status);
     if (becameClean) events.publishEvent(new RoomMarkedCleanEvent(tenant.tenantId(), r.getId(), r.getRoomType()));
+    if (becameClean) notifications.roomWasCleaned(tenant.tenantId(), r.getId());
+    if (becameDirty) notifications.roomBecameDirty(tenant.tenantId(), r.getId(), r.getRoomNumber());
     return r;
   }
 
@@ -376,6 +386,8 @@ public class StayService {
     }
 
     currentRoom.setStatus("dirty");
+    guestSessions.closeForRoom(tenantId, currentRoom.getId(), "room_changed");
+    notifications.roomBecameDirty(tenantId, currentRoom.getId(), currentRoom.getRoomNumber());
     targetRoom.setStatus("occupied");
     stay.changeRoom(targetRoomId);
     return stayDetails(stayId);
@@ -388,7 +400,7 @@ public class StayService {
   }
 
   @Transactional
-  public StayCharge addCharge(UUID stayId, String description, BigDecimal amount, BigDecimal quantity) {
+  public StayCharge addCharge(UUID stayId, String description, BigDecimal unitPrice, int quantity) {
     Stay stay =
         stays
             .findByTenantIdAndIdForUpdate(tenant.tenantId(), stayId)
@@ -397,26 +409,20 @@ public class StayService {
     if (description == null || description.isBlank() || description.trim().length() > 200) {
       throw new IllegalArgumentException("Charge description is required and must be at most 200 characters");
     }
-    if (amount == null || amount.signum() <= 0) {
-      throw new IllegalArgumentException("Charge amount must be greater than zero");
+    if (quantity < 1 || quantity > 999) {
+      throw new IllegalArgumentException("Charge quantity must be between 1 and 999");
+    }
+    if (unitPrice == null || unitPrice.signum() <= 0) {
+      throw new IllegalArgumentException("Unit price must be greater than zero");
     }
 
-    BigDecimal unitPrice = amount.setScale(2, RoundingMode.HALF_UP);
-    if (unitPrice.signum() <= 0) {
-      throw new IllegalArgumentException("Charge amount must be at least 0.01");
+    BigDecimal normalizedUnitPrice = unitPrice.setScale(2, RoundingMode.HALF_UP);
+    BigDecimal totalAmount = normalizedUnitPrice.multiply(BigDecimal.valueOf(quantity));
+    if (normalizedUnitPrice.signum() <= 0) {
+      throw new IllegalArgumentException("Unit price must be at least 0.01");
     }
-    int units;
-    try {
-      units = (quantity == null ? BigDecimal.ONE : quantity).intValueExact();
-    } catch (ArithmeticException ex) {
-      throw new IllegalArgumentException("Quantity must be a whole number from 1 to 999");
-    }
-    if (units < 1 || units > 999) {
-      throw new IllegalArgumentException("Quantity must be a whole number from 1 to 999");
-    }
-    BigDecimal total = unitPrice.multiply(BigDecimal.valueOf(units));
-    if (total.compareTo(new BigDecimal("99999999.99")) > 0) {
-      throw new IllegalArgumentException("Total charge cannot exceed 99999999.99");
+    if (totalAmount.compareTo(new BigDecimal("99999999.99")) > 0) {
+      throw new IllegalArgumentException("Total charge must be at most 99,999,999.99");
     }
     if (stay.getCheckoutInvoiceId() != null) {
       throw new IllegalStateException(
@@ -424,7 +430,8 @@ public class StayService {
     }
     return charges.save(
         new StayCharge(
-            tenant.tenantId(), stayId, description.trim(), units, unitPrice, total, tenant.userId()));
+            tenant.tenantId(), stayId, description.trim(), quantity, normalizedUnitPrice,
+            totalAmount, tenant.userId()));
   }
 
   public List<StayCharge> charges(UUID id) {
@@ -463,7 +470,8 @@ public class StayService {
               taxId));
       for (StayCharge c : unbilledCharges)
         lines.add(
-            new BillingService.LineInput(c.getDescription(), BigDecimal.valueOf(c.getQuantity()), c.getUnitPrice(), taxId));
+            new BillingService.LineInput(c.getDescription(), BigDecimal.valueOf(c.getQuantity()),
+                c.getUnitPrice(), taxId));
       var invoice =
           billing.createInvoice(
               new BillingService.NewInvoice(
@@ -516,7 +524,10 @@ public class StayService {
     }
     billing.closeAccount(stay.getAccountId());
     stay.checkout();
-    rooms.findByTenantIdAndId(tenant.tenantId(), stay.getRoomId()).orElseThrow().setStatus("dirty");
+    Room room = rooms.findByTenantIdAndId(tenant.tenantId(), stay.getRoomId()).orElseThrow();
+    room.setStatus("dirty");
+    guestSessions.closeForRoom(tenant.tenantId(), room.getId(), "checkout");
+    notifications.roomBecameDirty(tenant.tenantId(), room.getId(), room.getRoomNumber());
   }
 
   @Transactional

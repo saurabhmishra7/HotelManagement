@@ -17,6 +17,9 @@ public class RestaurantOrder extends TenantEntity {
   @Column(name = "stay_id")
   private UUID stayId;
 
+  @Column(name = "guest_session_id")
+  private UUID guestSessionId;
+
   @Column(nullable = false, length = 10)
   private String status;
 
@@ -67,6 +70,10 @@ public class RestaurantOrder extends TenantEntity {
     return stayId;
   }
 
+  public UUID getGuestSessionId() { return guestSessionId; }
+  public void attachGuestSession(UUID sessionId) { guestSessionId = sessionId; }
+  public LocalDateTime getCreatedAt() { return createdAt; }
+
   public String getOrderSource() {
     return orderSource;
   }
@@ -85,6 +92,14 @@ public class RestaurantOrder extends TenantEntity {
     confirmationStatus = "confirmed";
     confirmedBy = user;
     confirmedAt = LocalDateTime.now();
+  }
+
+  public void awaitGuestConfirmation() {
+    if (!"open".equals(status) || billRequestedAt != null)
+      throw new IllegalStateException("This order is no longer accepting items");
+    confirmationStatus = "pending";
+    confirmedBy = null;
+    confirmedAt = null;
   }
 
   public void markBilled() {

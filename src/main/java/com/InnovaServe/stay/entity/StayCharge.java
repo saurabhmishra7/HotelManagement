@@ -19,7 +19,7 @@ public class StayCharge extends TenantEntity {
   private BigDecimal amount;
 
   @Column(nullable = false)
-  private int quantity = 1;
+  private int quantity;
 
   @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
   private BigDecimal unitPrice;
@@ -35,7 +35,8 @@ public class StayCharge extends TenantEntity {
 
   protected StayCharge() {}
 
-  public StayCharge(UUID t, UUID stay, String description, int quantity, BigDecimal unitPrice, BigDecimal amount, UUID user) {
+  public StayCharge(UUID t, UUID stay, String description, int quantity, BigDecimal unitPrice,
+      BigDecimal amount, UUID user) {
     super(t);
     stayId = stay;
     this.description = description;

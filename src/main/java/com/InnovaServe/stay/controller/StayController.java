@@ -117,7 +117,7 @@ public class StayController {
   @ResponseStatus(HttpStatus.CREATED)
   @PreAuthorize("hasAuthority('PERM_STAY_CHARGE')")
   public StayCharge charge(@PathVariable UUID id, @RequestBody ChargeRequest r) {
-    return service.addCharge(id, r.description(), r.amount(), r.quantity());
+    return service.addCharge(id, r.description(), r.amount(), r.quantity() == null ? 1 : r.quantity());
   }
 
   @PostMapping("/stays/{id}/checkout")
@@ -159,7 +159,7 @@ public class StayController {
       String floor,
       @JsonProperty("base_tariff") BigDecimal baseTariff) {}
 
-  public record ChargeRequest(String description, BigDecimal amount, BigDecimal quantity) {}
+  public record ChargeRequest(String description, BigDecimal amount, Integer quantity) {}
 
   public record ChangeRoomRequest(UUID roomId) {}
 
