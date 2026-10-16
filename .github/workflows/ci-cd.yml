@@ -1,0 +1,109 @@
+name: Build, Test & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: innova_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Make mvnw executable
+        run: chmod +x mvnw
+
+      - name: Build and run tests
+        env:
+          CATALYST_DB_URL: jdbc:postgresql://localhost:5432/innova_test
+          CATALYST_DB_USERNAME: postgres
+          CATALYST_DB_PASSWORD: test
+          CATALYST_APP_JWT_SECRET: ci-test-jwt-secret-not-real
+          CATALYST_TENANT_PROVISIONING_KEY: ci-test-key-not-real
+        run: ./mvnw -B package
+
+      - name: Prepare jar
+        run: |
+          mkdir -p dist
+          cp target/*.jar dist/app.jar
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: innova-serve-jar
+          path: dist/app.jar
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: target/surefire-reports/
+          retention-days: 14
+
+  deploy-to-catalyst:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4   # needed: catalyst.json must be present
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: innova-serve-jar
+          path: dist/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Zoho Catalyst CLI
+        run: npm install -g zcatalyst-cli@beta
+
+      - name: Deploy to Zoho Catalyst
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+          CATALYST_PROJECT_NAME: ${{ secrets.CATALYST_PROJECT_NAME }}
+          CATALYST_APP_NAME: ${{ secrets.CATALYST_APP_NAME }}
+        run: |
+          catalyst deploy appsail \
+            --name "$CATALYST_APP_NAME" \
+            --build-path "dist/app.jar" \
+            --stack java17 \
+            --platform javase \
+            --command "sh -c 'java -jar app.jar'" \
+            --project "$CATALYST_PROJECT_NAME" \
+            --token "$CATALYST_TOKEN" \
+            --verbose
