@@ -36,11 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Java 17 to match the Catalyst runtime (--stack java17) below
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: maven
 
       - name: Make mvnw executable
@@ -53,7 +52,7 @@ jobs:
           CATALYST_DB_PASSWORD: test
           CATALYST_APP_JWT_SECRET: ci-test-jwt-secret-not-real
           CATALYST_TENANT_PROVISIONING_KEY: ci-test-key-not-real
-        run: ./mvnw -B package -Djava.version=17
+        run: ./mvnw -B package
 
       - name: Prepare jar
         run: |
@@ -102,7 +101,7 @@ jobs:
           catalyst deploy appsail \
             --name "$CATALYST_APP_NAME" \
             --build-path "dist/app.jar" \
-            --stack java17 \
+            --stack java21 \
             --platform javase \
             --command "sh -c 'java -jar app.jar'" \
             --project "$CATALYST_PROJECT_NAME" \
