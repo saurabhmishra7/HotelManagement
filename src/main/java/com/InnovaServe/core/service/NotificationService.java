@@ -83,6 +83,21 @@ public class NotificationService {
   }
 
   @Transactional
+  public void orderItemReady(UUID tenantId, UUID orderId, UUID orderItemId, String location, String itemName, short quantity) {
+    sendToRole(tenantId, "ORDER_CREATE", "WAITER",
+        itemName + " ready for " + location,
+        quantity + " × " + itemName + " is ready for pickup at " + location
+            + ". Deliver it, then mark it served in Restaurant → Orders or Tables & service.",
+        "restaurant_order", "order-ready:" + orderItemId + ":" + orderId);
+  }
+
+  @Transactional
+  public void orderItemWasServed(UUID tenantId, UUID orderItemId) {
+    notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(
+        tenantId, "restaurant_order", "order-ready:" + orderItemId).forEach(Notification::dismiss);
+  }
+
+  @Transactional
   public void restaurantBillRequested(UUID tenantId, UUID orderId, String location) {
     int recipients = sendToRole(tenantId, "BILL_CREATE", "WAITER",
         "Bill requested for " + location,

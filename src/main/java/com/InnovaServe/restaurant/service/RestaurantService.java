@@ -288,6 +288,30 @@ public class RestaurantService {
         .orElseThrow(() -> new NoSuchElementException("Order not found"));
   }
 
+  @Transactional
+  public RestaurantOrder cancelEmptyOrder(UUID id) {
+    RestaurantOrder order = orders.lockByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Order not found"));
+    if (!"open".equals(order.getStatus()))
+      throw new IllegalStateException("Only an open order can be cancelled");
+    if (orderItems.existsByTenantIdAndOrderId(tenant.tenantId(), id))
+      throw new IllegalStateException("Orders with items cannot be cancelled");
+    if (bills.findByTenantIdAndOrderId(tenant.tenantId(), id).isPresent())
+      throw new IllegalStateException("A billed order cannot be cancelled");
+
+    order.cancel();
+    UUID tableId = order.getTableId();
+    if (tableId != null && !orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open")) {
+      tables.findByTenantIdAndId(tenant.tenantId(), tableId)
+          .filter(table -> "occupied".equals(table.getStatus()))
+          .ifPresent(table -> {
+            table.setStatus("free");
+            guestSessions.closeForTable(tenant.tenantId(), tableId);
+          });
+    }
+    return order;
+  }
+
   public Map<String, Object> orderDetails(UUID id) {
     RestaurantOrder order = getOrder(id);
     Map<String, Object> details = new LinkedHashMap<>();
@@ -377,7 +401,9 @@ public class RestaurantService {
             .filter(item -> item.getPlacedAt() != null && item.getPreparingAt() != null)
             .map(item -> {
               long waitSeconds = Duration.between(item.getPlacedAt(), item.getPreparingAt()).toSeconds();
-              long preparationSeconds = Duration.between(item.getPreparingAt(), item.getServedAt()).toSeconds();
+              LocalDateTime readyAt = item.getReadyAt() != null ? item.getReadyAt() : item.getServedAt();
+              long preparationSeconds = Duration.between(item.getPreparingAt(), readyAt).toSeconds();
+              long totalSeconds = Duration.between(item.getPlacedAt(), item.getServedAt()).toSeconds();
               Map<String, Object> row = new LinkedHashMap<>();
               row.put("item_id", item.getId());
               row.put("order_id", item.getOrderId());
@@ -386,10 +412,11 @@ public class RestaurantService {
                   .map(MenuItem::getName).orElse("Unavailable menu item"));
               row.put("placed_at", item.getPlacedAt().atOffset(ZoneOffset.UTC));
               row.put("preparing_at", item.getPreparingAt().atOffset(ZoneOffset.UTC));
+              row.put("ready_at", item.getReadyAt() == null ? null : item.getReadyAt().atOffset(ZoneOffset.UTC));
               row.put("served_at", item.getServedAt().atOffset(ZoneOffset.UTC));
               row.put("waiting_seconds", waitSeconds);
               row.put("preparation_seconds", preparationSeconds);
-              row.put("total_seconds", waitSeconds + preparationSeconds);
+              row.put("total_seconds", totalSeconds);
               return row;
             })
             .toList();
@@ -415,7 +442,8 @@ public class RestaurantService {
 
   @Transactional
   public Map<String, Object> addItems(UUID orderId, List<ItemRequest> request) {
-    RestaurantOrder order = getOrder(orderId);
+    RestaurantOrder order = orders.lockByTenantIdAndId(tenant.tenantId(), orderId)
+        .orElseThrow(() -> new NoSuchElementException("Order not found"));
     if (!"open".equals(order.getStatus())) throw new IllegalStateException("Order is not open");
     if (bills.findByTenantIdAndOrderId(tenant.tenantId(), orderId).isPresent())
       throw new IllegalStateException("A bill is already prepared for this order; no more items can be added");
@@ -541,6 +569,7 @@ public class RestaurantService {
     item.put("status", orderItem.getStatus());
     item.put("placed_at", utcTimestamp(orderItem.getPlacedAt()));
     item.put("preparing_at", utcTimestamp(orderItem.getPreparingAt()));
+    item.put("ready_at", utcTimestamp(orderItem.getReadyAt()));
     item.put("served_at", utcTimestamp(orderItem.getServedAt()));
     return item;
   }
@@ -555,7 +584,7 @@ public class RestaurantService {
     return batches.findAllByTenantId(tenant.tenantId()).stream()
         .filter(batch -> station == null || station.equals(batch.getStation()))
         .filter(batch -> orderItems.existsByTenantIdAndKotBatchIdAndStatusNotIn(
-            tenant.tenantId(), batch.getId(), List.of("served", "cancelled")))
+            tenant.tenantId(), batch.getId(), List.of("ready", "served", "cancelled")))
         .sorted(Comparator.comparing(KotBatch::getBatchNumber))
         .map(
             batch ->
@@ -576,6 +605,33 @@ public class RestaurantService {
   }
 
   @Transactional
+  public OrderItem markItemReady(UUID itemId) {
+    OrderItem item = orderItems.lockByTenantIdAndId(tenant.tenantId(), itemId)
+        .orElseThrow(() -> new NoSuchElementException("Order item not found"));
+    item.markReady();
+    RestaurantOrder order = getOrder(item.getOrderId());
+    String location = orderLocation(order);
+    String itemName = items.findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
+        .map(MenuItem::getName).orElse("Order item");
+    notifications.orderItemReady(tenant.tenantId(), order.getId(), itemId, location, itemName, item.getQuantity());
+    return item;
+  }
+
+  private String orderLocation(RestaurantOrder order) {
+    if (order.getTableId() != null) {
+      return tables.findByTenantIdAndId(tenant.tenantId(), order.getTableId())
+          .map(table -> "Table " + table.getTableNumber()).orElse("the table");
+    }
+    if (order.getStayId() != null) {
+      return stayLookup.findById(tenant.tenantId(), order.getStayId())
+          .filter(stay -> stay.roomId() != null)
+          .flatMap(stay -> stayLookup.findRoomNumber(tenant.tenantId(), stay.roomId()))
+          .map(number -> "Room " + number).orElse("the room");
+    }
+    return "the takeaway counter";
+  }
+
+  @Transactional
   public OrderItem markItemServed(UUID itemId) {
     OrderItem item =
         orderItems
@@ -586,6 +642,7 @@ public class RestaurantService {
         .filter("thermal_printer"::equals)
         .isPresent();
     item.markServed(printerOnly);
+    notifications.orderItemWasServed(tenant.tenantId(), itemId);
     events.publishEvent(new OrderItemServedEvent(tenant.tenantId(), item.getMenuItemId(), item.getId(), item.getQuantity()));
     return item;
   }
@@ -660,7 +717,17 @@ public class RestaurantService {
   }
 
   @Transactional
-  public String settleBill(UUID billId, String mode, String roomNumber) {
+  public String billToRoom(UUID orderId, String roomNumber, String guestPhone) {
+    if (roomNumber == null || roomNumber.isBlank())
+      throw new IllegalArgumentException("Select the guest's active room");
+    if (guestPhone == null || guestPhone.isBlank())
+      throw new IllegalArgumentException("Enter the guest's phone number");
+    Map<String, Object> bill = generateBill(orderId);
+    return settleBill((UUID) bill.get("restaurant_bill_id"), "account", roomNumber, guestPhone);
+  }
+
+  @Transactional
+  public String settleBill(UUID billId, String mode, String roomNumber, String guestPhone) {
     if (mode == null || !Set.of("cash", "card", "upi", "account").contains(mode))
       throw new IllegalArgumentException("Invalid settlement mode");
     if ("account".equals(mode))
@@ -690,6 +757,8 @@ public class RestaurantService {
       }
       if (order.getStayId() != null && !order.getStayId().equals(stay.id()))
         throw new IllegalStateException("Order is linked to a different stay");
+      if (!stayLookup.matchesCustomerPhone(tenant.tenantId(), stay.customerId(), guestPhone))
+        throw new IllegalArgumentException("Guest phone does not match the selected active stay");
       order.associateStay(stay.id());
       invoice.associateCustomerIfMissing(stay.customerId());
       billing.postInvoiceToAccount(stay.accountId(), invoice.getId());

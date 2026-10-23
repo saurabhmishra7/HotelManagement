@@ -31,6 +31,7 @@ public class GuestOrderingService {
   private final NotificationService notifications;
   private final RestaurantBillBreakdownService billBreakdown;
   private final RoomServiceRequestService roomServiceRequests;
+  private final GuestQrSessionService guestQrSessions;
 
   public GuestOrderingService(
       QRCodeRepository qrCodes,
@@ -46,7 +47,8 @@ public class GuestOrderingService {
       ModuleEntitlementService entitlements,
       NotificationService notifications,
       RestaurantBillBreakdownService billBreakdown,
-      RoomServiceRequestService roomServiceRequests) {
+      RoomServiceRequestService roomServiceRequests,
+      GuestQrSessionService guestQrSessions) {
     this.qrCodes = qrCodes;
     this.tenants = tenants;
     this.categories = categories;
@@ -61,6 +63,7 @@ public class GuestOrderingService {
     this.notifications = notifications;
     this.billBreakdown = billBreakdown;
     this.roomServiceRequests = roomServiceRequests;
+    this.guestQrSessions = guestQrSessions;
   }
 
   @Transactional(readOnly = true)
@@ -151,11 +154,13 @@ public class GuestOrderingService {
           tables
               .findByTenantIdAndId(tenantId, qrCode.getTargetId())
               .orElseThrow(() -> new NoSuchElementException("QR table not found"));
-      if (Set.of("billed", "dirty").contains(table.getStatus()))
+      if ("dirty".equals(table.getStatus())
+          || ("billed".equals(table.getStatus())
+              && !guestQrSessions.latestTableBillPaid(tenantId, table.getId())))
         throw new IllegalStateException("This table is not accepting new orders");
       tableId = table.getId();
       location = "Table " + table.getTableNumber();
-      if ("free".equals(table.getStatus())) table.setStatus("occupied");
+      if (Set.of("free", "billed").contains(table.getStatus())) table.setStatus("occupied");
       orderType = "dine_in";
     } else {
       entitlements.requireActive(tenantId, ModuleType.STAY);

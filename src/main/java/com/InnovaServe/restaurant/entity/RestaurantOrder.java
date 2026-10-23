@@ -106,6 +106,11 @@ public class RestaurantOrder extends TenantEntity {
     status = "billed";
   }
 
+  public void cancel() {
+    if (!"open".equals(status)) throw new IllegalStateException("Only an open order can be cancelled");
+    status = "cancelled";
+  }
+
   public LocalDateTime getBillRequestedAt() {
     return billRequestedAt;
   }

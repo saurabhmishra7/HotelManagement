@@ -4,6 +4,7 @@ import com.InnovaServe.core.entity.StaffRole;
 import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.entity.Tenant;
 import com.InnovaServe.core.security.ModuleType;
+import com.InnovaServe.core.service.AccountValidation;
 import com.InnovaServe.core.service.ModuleEntitlementService;
 import com.InnovaServe.core.service.TenantProvisioningService;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -50,10 +51,10 @@ public class TenantProvisioningController {
       throw new IllegalArgumentException("Tenant name is required");
     if (request.ownerName() == null || request.ownerName().isBlank())
       throw new IllegalArgumentException("Owner name is required");
-    if (request.ownerPhone() == null || request.ownerPhone().isBlank())
-      throw new IllegalArgumentException("Owner phone is required");
-    if (request.ownerPassword() == null || request.ownerPassword().length() < 12)
-      throw new IllegalArgumentException("Owner password must be at least 12 characters");
+    AccountValidation.requireMobile(request.ownerPhone());
+    if (request.ownerEmail() != null && !request.ownerEmail().isBlank())
+      AccountValidation.requireEmail(request.ownerEmail());
+    AccountValidation.requirePassword(request.ownerPassword(), 12);
     if (request.ownerPin() == null || !request.ownerPin().matches("[0-9]{4,8}"))
       throw new IllegalArgumentException("Owner PIN must contain 4 to 8 digits");
 

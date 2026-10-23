@@ -55,6 +55,19 @@ public class StayLookupAdapter implements StayLookupPort, ModuleDeactivationGuar
   }
 
   @Override
+  public boolean matchesCustomerPhone(UUID tenantId, UUID customerId, String phone) {
+    if (phone == null || phone.isBlank()) return false;
+    String entered = phone.trim();
+    if (!entered.matches("[0-9+() -]{7,20}")) return false;
+    String enteredDigits = entered.replaceAll("\\D", "");
+    if (enteredDigits.length() < 7 || enteredDigits.length() > 15) return false;
+    return customers.findByTenantIdAndId(tenantId, customerId)
+        .map(customer -> customer.getPhone() != null
+            && enteredDigits.equals(customer.getPhone().replaceAll("\\D", "")))
+        .orElse(false);
+  }
+
+  @Override
   public Optional<StaySummary> findActiveByRoomId(UUID tenantId, UUID roomId) {
     return stays
         .findFirstByTenantIdAndRoomIdAndStatusOrderByCheckInAtDesc(tenantId, roomId, "active")

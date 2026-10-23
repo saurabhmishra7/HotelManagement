@@ -103,8 +103,7 @@ public class PasswordResetService {
   public void confirm(String tenantCode, String token, String newPassword) {
     if (tenantCode == null || tenantCode.isBlank())
       throw new IllegalArgumentException("tenant_code is required");
-    if (newPassword == null || newPassword.length() < 12)
-      throw new IllegalArgumentException("Password must be at least 12 characters");
+    AccountValidation.requirePassword(newPassword, 12);
     if (token == null || token.isBlank())
       throw new IllegalArgumentException("Reset token is required");
     var tenant =

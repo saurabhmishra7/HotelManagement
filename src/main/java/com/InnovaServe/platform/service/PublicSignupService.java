@@ -7,6 +7,7 @@ import com.InnovaServe.core.repository.StaffRoleRepository;
 import com.InnovaServe.core.repository.StaffUserRepository;
 import com.InnovaServe.core.repository.TenantRepository;
 import com.InnovaServe.core.security.Permission;
+import com.InnovaServe.core.service.AccountValidation;
 import com.InnovaServe.core.service.EmailVerificationService;
 import com.InnovaServe.platform.entity.PlatformSettings;
 import com.InnovaServe.platform.entity.PublicSignupIntent;
@@ -87,7 +88,11 @@ public class PublicSignupService {
   public Map<String, Object> signupMode() {
     PlatformSettings current = settings.findById(GLOBAL_SETTINGS_ID)
         .orElseThrow(() -> new IllegalStateException("Global platform settings are missing"));
-    return Map.of("mode", current.getSignupMode());
+    List<String> trialModules = "trial".equals(current.getSignupMode()) && current.getTrialPlanId() != null
+        ? plans.findById(current.getTrialPlanId()).filter(Plan::isActive)
+            .map(plan -> plan.getModules().stream().sorted().toList()).orElse(List.of())
+        : List.of();
+    return Map.of("mode", current.getSignupMode(), "trial_modules", trialModules);
   }
 
   @Transactional
@@ -277,13 +282,11 @@ public class PublicSignupService {
     if (request.ownerName() == null || request.ownerName().isBlank()
         || request.ownerName().trim().length() > 100)
       throw new IllegalArgumentException("Owner name is required and must be at most 100 characters");
-    if (request.ownerPhone() == null || !request.ownerPhone().trim().matches("[0-9+() -]{7,15}"))
-      throw new IllegalArgumentException("A valid owner phone is required");
-    if (request.ownerEmail() == null || request.ownerEmail().trim().length() > 150
-        || !request.ownerEmail().trim().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"))
+    AccountValidation.requireMobile(request.ownerPhone());
+    if (request.ownerEmail() == null || request.ownerEmail().trim().length() > 150)
       throw new IllegalArgumentException("A valid owner email is required");
-    if (request.ownerPassword() == null || request.ownerPassword().length() < 12)
-      throw new IllegalArgumentException("Password must be at least 12 characters");
+    AccountValidation.requireEmail(request.ownerEmail());
+    AccountValidation.requirePassword(request.ownerPassword(), 12);
     if (request.ownerPin() == null || !request.ownerPin().matches("[0-9]{4,8}"))
       throw new IllegalArgumentException("Owner PIN must contain 4 to 8 digits");
     if (request.gstin() != null && request.gstin().length() > 15)

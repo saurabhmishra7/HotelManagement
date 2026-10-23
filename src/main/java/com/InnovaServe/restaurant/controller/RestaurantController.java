@@ -129,7 +129,7 @@ public class RestaurantController {
   }
 
   @GetMapping("/room-service-rooms")
-  @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
+  @PreAuthorize("hasAnyAuthority('PERM_ORDER_CREATE', 'PERM_BILL_SETTLE')")
   public List<Map<String, String>> roomServiceRooms() {
     return service.roomServiceRooms();
   }
@@ -182,6 +182,12 @@ public class RestaurantController {
             .toList());
   }
 
+  @PostMapping("/orders/{id}/cancel")
+  @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
+  public RestaurantOrder cancelEmptyOrder(@PathVariable UUID id) {
+    return service.cancelEmptyOrder(id);
+  }
+
   @GetMapping("/orders/{id}")
   @PreAuthorize("hasAuthority('PERM_ORDER_READ')")
   public Map<String, Object> getOrder(@PathVariable UUID id) {
@@ -194,10 +200,16 @@ public class RestaurantController {
     return service.generateBill(id);
   }
 
+  @PostMapping("/orders/{id}/bill-to-room")
+  @PreAuthorize("hasAuthority('PERM_BILL_CREATE') and hasAuthority('PERM_BILL_SETTLE')")
+  public Map<String, String> billToRoom(@PathVariable UUID id, @RequestBody SettleRequest r) {
+    return Map.of("status", service.billToRoom(id, r.roomNumber(), r.guestPhone()));
+  }
+
   @PostMapping("/bills/{id}/settle")
   @PreAuthorize("hasAuthority('PERM_BILL_SETTLE')")
   public Map<String, String> settle(@PathVariable UUID id, @RequestBody SettleRequest r) {
-    return Map.of("status", service.settleBill(id, r.settlementMode(), r.roomNumber()));
+    return Map.of("status", service.settleBill(id, r.settlementMode(), r.roomNumber(), r.guestPhone()));
   }
 
   @GetMapping("/orders/pending-guest")
@@ -230,6 +242,12 @@ public class RestaurantController {
   @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
   public OrderItem markItemPreparing(@PathVariable UUID id) {
     return service.markItemPreparing(id);
+  }
+
+  @PostMapping("/order-items/{id}/ready")
+  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  public OrderItem markItemReady(@PathVariable UUID id) {
+    return service.markItemReady(id);
   }
 
   @PostMapping("/order-items/{id}/served")
@@ -287,5 +305,6 @@ public class RestaurantController {
 
   public record SettleRequest(
       @JsonProperty("settlement_mode") String settlementMode,
-      @JsonProperty("room_number") String roomNumber) {}
+      @JsonProperty("room_number") String roomNumber,
+      @JsonProperty("guest_phone") String guestPhone) {}
 }

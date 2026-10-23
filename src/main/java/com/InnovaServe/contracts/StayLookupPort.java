@@ -31,6 +31,8 @@ public interface StayLookupPort {
 
   Optional<String> findCustomerName(UUID tenantId, UUID customerId);
 
+  boolean matchesCustomerPhone(UUID tenantId, UUID customerId, String phone);
+
   record StaySummary(
       UUID id, UUID accountId, UUID customerId, UUID roomId, String status, String guestName) {}
 

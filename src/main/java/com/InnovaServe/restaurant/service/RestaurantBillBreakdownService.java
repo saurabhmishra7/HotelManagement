@@ -116,6 +116,7 @@ public class RestaurantBillBreakdownService {
       subtotal = subtotal.add(base);
       taxTotal = taxTotal.add(tax);
       Map<String, Object> line = new LinkedHashMap<>();
+      line.put("order_item_id", orderItem.getId());
       line.put("description", menuItem.getName());
       line.put("quantity", quantity);
       line.put("unitPrice", unitPrice);

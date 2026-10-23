@@ -32,6 +32,9 @@ public class OrderItem extends TenantEntity {
   @Column(name = "preparing_at")
   private LocalDateTime preparingAt;
 
+  @Column(name = "ready_at")
+  private LocalDateTime readyAt;
+
   @Column(name = "served_at")
   private LocalDateTime servedAt;
 
@@ -78,6 +81,10 @@ public class OrderItem extends TenantEntity {
     return preparingAt;
   }
 
+  public LocalDateTime getReadyAt() {
+    return readyAt;
+  }
+
   public LocalDateTime getServedAt() {
     return servedAt;
   }
@@ -94,9 +101,16 @@ public class OrderItem extends TenantEntity {
     preparingAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
+  public void markReady() {
+    if (!"preparing".equals(status))
+      throw new IllegalStateException("Only preparing items can be marked ready");
+    status = "ready";
+    readyAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
+  }
+
   public void markServed(boolean allowDirectFromSent) {
-    if (!"preparing".equals(status) && !(allowDirectFromSent && "sent".equals(status)))
-      throw new IllegalStateException("Only preparing items can be marked served");
+    if (!"ready".equals(status) && !(allowDirectFromSent && ("sent".equals(status) || "preparing".equals(status))))
+      throw new IllegalStateException("Only ready items can be marked served");
     if ("sent".equals(status)) preparingAt = placedAt;
     status = "served";
     servedAt = LocalDateTime.now(java.time.ZoneOffset.UTC);

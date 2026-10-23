@@ -50,14 +50,15 @@ public class GuestQrSessionService {
   public Started start(String qrToken, String existingToken) {
     QRCode qr = qr(qrToken);
     if (existingToken != null && !existingToken.isBlank()) {
-      GuestQrSession existing = session(qr, existingToken);
+      GuestQrSession existing = refreshPaidStatus(session(qr, existingToken));
       return new Started(existing, existingToken);
     }
     if ("dining_table".equals(qr.getTargetType())) {
       entitlements.requireActive(qr.getTenantId(), ModuleType.RESTAURANT);
       String status = tables.findByTenantIdAndId(qr.getTenantId(), qr.getTargetId())
           .orElseThrow(() -> new NoSuchElementException("Table not found")).getStatus();
-      if (Set.of("billed", "dirty").contains(status))
+      if ("dirty".equals(status)
+          || ("billed".equals(status) && !latestTableBillPaid(qr.getTenantId(), qr.getTargetId())))
         throw new IllegalStateException("This table is finishing its previous visit. Please ask the team for help.");
     } else if ("room".equals(qr.getTargetType())) {
       entitlements.requireActive(qr.getTenantId(), ModuleType.STAY);
@@ -74,12 +75,22 @@ public class GuestQrSessionService {
     return new Started(created, token);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public GuestQrSession get(String qrToken, String sessionToken) {
-    return session(qr(qrToken), sessionToken);
+    return refreshPaidStatus(session(qr(qrToken), sessionToken));
   }
 
-  @Transactional(readOnly = true)
+  private GuestQrSession refreshPaidStatus(GuestQrSession guestSession) {
+    if ("active".equals(guestSession.getStatus())
+        && "dining_table".equals(guestSession.getTargetType())) {
+      List<RestaurantOrder> visitOrders = orders.findAllByTenantIdAndGuestSessionIdOrderByCreatedAtAsc(
+          guestSession.getTenantId(), guestSession.getId());
+      if (visitPaid(visitOrders)) guestSession.close("paid");
+    }
+    return guestSession;
+  }
+
+  @Transactional
   public GuestQrSession requireActive(String qrToken, String sessionToken) {
     GuestQrSession session = get(qrToken, sessionToken);
     if (!"active".equals(session.getStatus()))
@@ -111,11 +122,11 @@ public class GuestQrSessionService {
                     || order.getCreatedAt() == null || session.getCreatedAt() == null
                     || !session.getCreatedAt().isAfter(order.getCreatedAt()))
                 .toList();
-            List<RestaurantOrder> visitOrders = active.stream()
-                .flatMap(session -> orders.findAllByTenantIdAndGuestSessionIdOrderByCreatedAtAsc(
-                    event.tenantId(), session.getId()).stream()).toList();
-            if (visitOrders.stream().allMatch(this::isPaid))
-              active.forEach(session -> session.close("paid"));
+            active.forEach(session -> {
+              List<RestaurantOrder> visitOrders = orders.findAllByTenantIdAndGuestSessionIdOrderByCreatedAtAsc(
+                  event.tenantId(), session.getId());
+              if (visitPaid(visitOrders)) session.close("paid");
+            });
           }
         }));
   }
@@ -123,6 +134,22 @@ public class GuestQrSessionService {
   private boolean isPaid(RestaurantOrder order) {
     if ("cancelled".equals(order.getStatus())) return true;
     return bills.findByTenantIdAndOrderId(order.getTenantId(), order.getId())
+        .map(bill -> billing.amountDue(billing.getInvoice(bill.getInvoiceId())).signum() <= 0)
+        .orElse(false);
+  }
+
+  private boolean visitPaid(List<RestaurantOrder> visitOrders) {
+    List<RestaurantOrder> billable = visitOrders.stream()
+        .filter(order -> !"cancelled".equals(order.getStatus()))
+        .toList();
+    return !billable.isEmpty() && billable.stream().allMatch(this::isPaid);
+  }
+
+  @Transactional(readOnly = true)
+  public boolean latestTableBillPaid(UUID tenantId, UUID tableId) {
+    return orders.findFirstByTenantIdAndTableIdAndStatusOrderByCreatedAtDesc(
+            tenantId, tableId, "billed")
+        .flatMap(order -> bills.findByTenantIdAndOrderId(tenantId, order.getId()))
         .map(bill -> billing.amountDue(billing.getInvoice(bill.getInvoiceId())).signum() <= 0)
         .orElse(false);
   }

@@ -1,5 +1,6 @@
 package com.InnovaServe.platform.service;
 
+import com.InnovaServe.core.service.AccountValidation;
 import com.InnovaServe.platform.entity.PlatformAdmin;
 import com.InnovaServe.platform.repository.PlatformAdminRepository;
 import com.InnovaServe.platform.security.PlatformRole;
@@ -30,8 +31,7 @@ public class PlatformAdminService {
   public Map<String, Object> create(
       String name, String email, String password, String roleName, UUID actingAdminId) {
     validateNameEmail(name, email);
-    if (password == null || password.length() < 16)
-      throw new IllegalArgumentException("Platform admin password must be at least 16 characters");
+    AccountValidation.requirePassword(password, 16);
     String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
     if (admins.existsByEmailIgnoreCase(normalizedEmail))
       throw new IllegalArgumentException("Platform admin email already exists");
@@ -85,8 +85,9 @@ public class PlatformAdminService {
   private static void validateNameEmail(String name, String email) {
     if (name == null || name.isBlank() || name.trim().length() > 100)
       throw new IllegalArgumentException("Name is required and must be at most 100 characters");
-    if (email == null || email.isBlank() || email.trim().length() > 150 || !email.contains("@"))
+    if (email == null || email.trim().length() > 150)
       throw new IllegalArgumentException("A valid email is required");
+    AccountValidation.requireEmail(email);
   }
 
   private static PlatformRole parseRole(String roleName) {
