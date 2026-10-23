@@ -395,9 +395,15 @@ public class RestaurantService {
 
   public Map<String, Object> servicePerformance() {
     LocalDateTime since = LocalDateTime.now(ZoneOffset.UTC).minusDays(30);
+    List<OrderItem> servedItems = orderItems.findAllByTenantIdAndServedAtGreaterThanEqualOrderByServedAtDesc(
+        tenant.tenantId(), since);
+    Set<UUID> menuItemIds = servedItems.stream().map(OrderItem::getMenuItemId)
+        .collect(java.util.stream.Collectors.toSet());
+    Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
+        : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
     List<Map<String, Object>> completedItems =
-        orderItems.findAllByTenantIdAndServedAtGreaterThanEqualOrderByServedAtDesc(
-                tenant.tenantId(), since).stream()
+        servedItems.stream()
             .filter(item -> item.getPlacedAt() != null && item.getPreparingAt() != null)
             .map(item -> {
               long waitSeconds = Duration.between(item.getPlacedAt(), item.getPreparingAt()).toSeconds();
@@ -408,8 +414,7 @@ public class RestaurantService {
               row.put("item_id", item.getId());
               row.put("order_id", item.getOrderId());
               row.put("menu_item_id", item.getMenuItemId());
-              row.put("name", items.findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
-                  .map(MenuItem::getName).orElse("Unavailable menu item"));
+              row.put("name", menuNames.getOrDefault(item.getMenuItemId(), "Unavailable menu item"));
               row.put("placed_at", item.getPlacedAt().atOffset(ZoneOffset.UTC));
               row.put("preparing_at", item.getPreparingAt().atOffset(ZoneOffset.UTC));
               row.put("ready_at", item.getReadyAt() == null ? null : item.getReadyAt().atOffset(ZoneOffset.UTC));
@@ -581,17 +586,26 @@ public class RestaurantService {
   public List<Map<String, Object>> pendingKots(String station) {
     if (station != null && !Set.of("kitchen", "bar").contains(station))
       throw new IllegalArgumentException("station must be kitchen or bar");
-    return batches.findAllByTenantId(tenant.tenantId()).stream()
-        .filter(batch -> station == null || station.equals(batch.getStation()))
-        .filter(batch -> orderItems.existsByTenantIdAndKotBatchIdAndStatusNotIn(
-            tenant.tenantId(), batch.getId(), List.of("ready", "served", "cancelled")))
-        .sorted(Comparator.comparing(KotBatch::getBatchNumber))
-        .map(
-            batch ->
-                Map.<String, Object>of(
-                    "batch", batch,
-                    "items", itemsForBatch(batch.getId())))
-        .toList();
+    List<KotBatch> pendingBatches = batches.findPendingByTenantIdAndStation(tenant.tenantId(), station);
+    if (pendingBatches.isEmpty()) return List.of();
+
+    List<UUID> batchIds = pendingBatches.stream().map(KotBatch::getId).toList();
+    List<OrderItem> pendingBatchItems = orderItems.findAllByTenantIdAndKotBatchIdIn(tenant.tenantId(), batchIds);
+    Set<UUID> menuItemIds = pendingBatchItems.stream().map(OrderItem::getMenuItemId)
+        .collect(java.util.stream.Collectors.toSet());
+    Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
+        : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+    Map<UUID, List<OrderItem>> itemsByBatch = new HashMap<>();
+    for (OrderItem item : pendingBatchItems)
+      itemsByBatch.computeIfAbsent(item.getKotBatchId(), ignored -> new ArrayList<>()).add(item);
+    Comparator<OrderItem> itemOrder = Comparator.comparing(OrderItem::getPlacedAt)
+        .thenComparing(OrderItem::getId);
+    return pendingBatches.stream().map(batch -> {
+      List<Map<String, Object>> batchItems = itemsByBatch.getOrDefault(batch.getId(), List.of()).stream()
+          .sorted(itemOrder).map(item -> kitchenItem(item, menuNames)).toList();
+      return Map.<String, Object>of("batch", batch, "items", batchItems);
+    }).toList();
   }
 
   @Transactional

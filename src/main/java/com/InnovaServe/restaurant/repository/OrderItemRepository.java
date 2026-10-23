@@ -17,7 +17,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, UUID> {
 
   List<OrderItem> findAllByTenantIdAndKotBatchIdOrderByPlacedAtAscIdAsc(UUID t, UUID batch);
 
-  boolean existsByTenantIdAndKotBatchIdAndStatusNotIn(UUID tenantId, UUID batchId, Collection<String> statuses);
+  List<OrderItem> findAllByTenantIdAndKotBatchIdIn(UUID tenantId, Collection<UUID> batchIds);
 
   Optional<OrderItem> findByTenantIdAndOrderIdAndId(UUID t, UUID order, UUID id);
 

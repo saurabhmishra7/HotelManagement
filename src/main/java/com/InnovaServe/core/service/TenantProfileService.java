@@ -84,7 +84,7 @@ public class TenantProfileService {
   @Transactional
   public Profile updateAppearance(Appearance request) {
     String palette = request.palette() == null ? "" : request.palette().trim().toLowerCase(Locale.ROOT);
-    if (!Set.of("earth", "sage", "ocean", "berry", "lavender", "forest", "terracotta", "slate")
+    if (!Set.of("earth", "sage", "ocean", "berry", "lavender", "citrus", "brunch", "slate")
         .contains(palette))
       throw new IllegalArgumentException("Choose one of the available color palettes");
     lockedTenant().updateUiPalette(palette);
