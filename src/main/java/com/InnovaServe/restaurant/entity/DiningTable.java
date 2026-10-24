@@ -13,6 +13,9 @@ public class DiningTable extends TenantEntity {
   @Column(length = 50)
   private String section;
 
+  @Column(nullable = false, length = 32)
+  private String station = "kitchen";
+
   @Column(nullable = false, length = 10)
   private String status;
 
@@ -30,6 +33,10 @@ public class DiningTable extends TenantEntity {
   }
 
   public String getSection() { return section; }
+
+  public String getStation() { return station; }
+
+  public void assignStation(String station) { this.station = station; }
 
   public String getStatus() {
     return status;

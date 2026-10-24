@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface PublicSignupIntentRepository extends JpaRepository<PublicSignupIntent, UUID> {
   boolean existsByOwnerEmailIgnoreCaseAndStatus(String ownerEmail, String status);
+  boolean existsByOwnerEmailIgnoreCaseAndStatusAndIdNot(String ownerEmail, String status, UUID id);
 
   List<PublicSignupIntent> findAllByStatusAndExpiresAtBefore(String status, Instant now);
 

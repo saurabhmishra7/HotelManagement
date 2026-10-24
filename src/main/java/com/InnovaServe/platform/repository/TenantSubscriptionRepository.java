@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
 public interface TenantSubscriptionRepository extends JpaRepository<TenantSubscription, UUID> {
   List<TenantSubscription> findAllByTenantIdOrderByStartsOnDescCreatedAtDesc(UUID tenantId);
 
+  Optional<TenantSubscription> findFirstByTenantIdAndStatusInOrderByStartsOnDesc(
+      UUID tenantId, List<String> statuses);
+
   Optional<TenantSubscription> findFirstByTenantIdAndStatusOrderByStartsOnDesc(
       UUID tenantId, String status);
 

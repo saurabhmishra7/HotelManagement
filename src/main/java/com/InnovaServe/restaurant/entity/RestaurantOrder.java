@@ -14,6 +14,9 @@ public class RestaurantOrder extends TenantEntity {
   @Column(name = "table_id")
   private UUID tableId;
 
+  @Column(name = "service_station", nullable = false, length = 32)
+  private String serviceStation = "kitchen";
+
   @Column(name = "stay_id")
   private UUID stayId;
 
@@ -65,6 +68,10 @@ public class RestaurantOrder extends TenantEntity {
   public String getOrderType() {
     return orderType;
   }
+
+  public String getServiceStation() { return serviceStation; }
+
+  public void assignServiceStation(String station) { this.serviceStation = station; }
 
   public UUID getStayId() {
     return stayId;

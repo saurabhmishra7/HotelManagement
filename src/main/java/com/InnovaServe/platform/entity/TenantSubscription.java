@@ -42,6 +42,9 @@ public class TenantSubscription {
   @Column(name = "is_trial", nullable = false)
   private boolean trial;
 
+  @Column(name = "bar_enabled", nullable = false)
+  private boolean barEnabled;
+
   @Column(name = "cancelled_at")
   private Instant cancelledAt;
 
@@ -72,7 +75,8 @@ public class TenantSubscription {
       String status,
       UUID createdBy,
       Set<String> modules,
-      boolean trial) {
+      boolean trial,
+      boolean barEnabled) {
     this.tenantId = tenantId;
     this.planId = planId;
     this.planPriceAtTime = planPriceAtTime;
@@ -82,6 +86,7 @@ public class TenantSubscription {
     this.expiresOn = expiresOn;
     this.status = status;
     this.trial = trial;
+    this.barEnabled = barEnabled;
     this.createdBy = createdBy;
     this.modules = new HashSet<>(modules);
   }
@@ -141,6 +146,10 @@ public class TenantSubscription {
   public Set<String> getModules() {
     return Set.copyOf(modules);
   }
+
+  public boolean isBarEnabled() { return barEnabled; }
+
+  public void setBarEnabled(boolean barEnabled) { this.barEnabled = barEnabled; }
 
   public void replaceModules(Set<String> modules) {
     this.modules = new HashSet<>(modules);

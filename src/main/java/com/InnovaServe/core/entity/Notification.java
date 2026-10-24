@@ -16,6 +16,7 @@ public class Notification {
   @Column(nullable = false, length = 40) private String source;
   @Column(name = "source_key", length = 200) private String sourceKey;
   @Column(name = "created_at", nullable = false, updatable = false) private Instant createdAt;
+  @Column(name = "updated_at", nullable = false) private Instant updatedAt;
   @Column(name = "read_at") private Instant readAt;
   @Column(name = "dismissed_at") private Instant dismissedAt;
 
@@ -31,6 +32,7 @@ public class Notification {
     this.source = source;
     this.sourceKey = sourceKey;
     this.createdAt = Instant.now();
+    this.updatedAt = createdAt;
   }
 
   public UUID getId() { return id; }
@@ -42,8 +44,21 @@ public class Notification {
   public String getSource() { return source; }
   public String getSourceKey() { return sourceKey; }
   public Instant getCreatedAt() { return createdAt; }
+  public Instant getUpdatedAt() { return updatedAt; }
   public Instant getReadAt() { return readAt; }
   public Instant getDismissedAt() { return dismissedAt; }
   public void markRead() { if (readAt == null) readAt = Instant.now(); }
+  public void updateReadyItems(String title, String message, boolean newlyReady) {
+    this.title = title;
+    this.message = message;
+    if (newlyReady) {
+      readAt = null;
+      updatedAt = Instant.now();
+    }
+  }
+  public void reopenReadyItems(String title, String message) {
+    dismissedAt = null;
+    updateReadyItems(title, message, true);
+  }
   public void dismiss() { dismissedAt = Instant.now(); markRead(); }
 }

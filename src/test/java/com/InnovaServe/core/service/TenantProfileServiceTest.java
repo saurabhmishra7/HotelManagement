@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
+import com.InnovaServe.restaurant.service.RestaurantStationService;
 import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.*;
@@ -15,6 +16,7 @@ class TenantProfileServiceTest {
   private final TenantRepository tenants = mock(TenantRepository.class);
   private final StayChargePresetRepository presets = mock(StayChargePresetRepository.class);
   private final TenantContext context = mock(TenantContext.class);
+  private final RestaurantStationService stations = mock(RestaurantStationService.class);
   private final Tenant tenant = new Tenant("Demo", null, "Address");
   private TenantProfileService service;
 
@@ -24,7 +26,8 @@ class TenantProfileServiceTest {
     when(tenants.findById(tenantId)).thenReturn(Optional.of(tenant));
     when(tenants.lockById(tenantId)).thenReturn(Optional.of(tenant));
     when(presets.findAllByTenantIdOrderByDescriptionAsc(tenantId)).thenReturn(List.of());
-    service = new TenantProfileService(tenants, presets, context);
+    when(stations.list()).thenReturn(List.of());
+    service = new TenantProfileService(tenants, presets, context, stations);
   }
 
   @Test

@@ -96,7 +96,8 @@ public class PlatformSubscriptionService {
                 status,
                 adminId,
                 plan.getModules(),
-                false));
+                false,
+                plan.isBarEnabled()));
     if ("active".equals(status)) {
       entitlements.applySubscription(tenantId, created.getModules(), expiresAt(created.getExpiresOn()));
     }
@@ -129,7 +130,8 @@ public class PlatformSubscriptionService {
             "active",
             null,
             plan.getModules(),
-            trial));
+            trial,
+            plan.isBarEnabled()));
     entitlements.applySubscription(
         tenantId, subscription.getModules(), expiresAt(subscription.getExpiresOn()));
     audit.recordSystem(
@@ -170,7 +172,7 @@ public class PlatformSubscriptionService {
     String status = startsOn.isAfter(today) ? "scheduled" : "active";
     TenantSubscription created = subscriptions.save(new TenantSubscription(
         tenantId, plan.getId(), plan.getPrice(), paid, null, startsOn, expiresOn,
-        status, null, plan.getModules(), false));
+        status, null, plan.getModules(), false, plan.isBarEnabled()));
     if ("active".equals(status))
       entitlements.applySubscription(tenantId, created.getModules(), expiresAt(expiresOn));
     audit.recordSystem(schedule ? "TENANT_SUBSCRIPTION_SCHEDULED" : "TENANT_SUBSCRIPTION_ACTIVATED",
@@ -290,6 +292,7 @@ public class PlatformSubscriptionService {
     result.put("is_trial", subscription.isTrial());
     result.put("cancelled_at", subscription.getCancelledAt());
     result.put("modules", subscription.getModules().stream().sorted().toList());
+    result.put("bar_enabled", subscription.isBarEnabled());
     return result;
   }
 

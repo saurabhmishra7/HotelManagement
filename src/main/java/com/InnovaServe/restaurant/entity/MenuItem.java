@@ -24,7 +24,7 @@ public class MenuItem extends TenantEntity {
   @Column(name = "tax_rule_id")
   private UUID taxRuleId;
 
-  @Column(nullable = false, length = 10)
+  @Column(nullable = false, length = 32)
   private String station;
 
   @Column(name = "veg_flag", nullable = false)
@@ -84,8 +84,8 @@ public class MenuItem extends TenantEntity {
 
   private void setFoodType(String value) {
     String normalized = value.trim().toUpperCase(Locale.ROOT);
-    if (!normalized.equals("VEG") && !normalized.equals("NON_VEG") && !normalized.equals("EGG")) {
-      throw new IllegalArgumentException("Food type must be VEG, NON_VEG, or EGG");
+    if (!normalized.equals("VEG") && !normalized.equals("NON_VEG") && !normalized.equals("EGG") && !normalized.equals("NONE")) {
+      throw new IllegalArgumentException("Dietary type must be VEG, NON_VEG, EGG, or NONE");
     }
     foodType = normalized;
     vegFlag = normalized.equals("VEG");

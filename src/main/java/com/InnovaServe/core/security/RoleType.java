@@ -13,6 +13,7 @@ public enum RoleType {
   RESTAURANT_MANAGER,
   WAITER,
   KITCHEN_STAFF,
+  BARTENDER,
   ACCOUNTANT,
   EXPENSE_MANAGER;
 
@@ -73,6 +74,8 @@ public enum RoleType {
               Permission.ORDER_CONFIRM,
               Permission.KITCHEN_READ,
               Permission.KITCHEN_MANAGE,
+              Permission.BAR_READ,
+              Permission.BAR_MANAGE,
               Permission.SERVICE_PERFORMANCE_READ,
               Permission.INVENTORY_READ,
               Permission.INVENTORY_MANAGE,
@@ -94,6 +97,7 @@ public enum RoleType {
               Permission.STAY_READ);
       case KITCHEN_STAFF ->
           EnumSet.of(Permission.KITCHEN_READ, Permission.KITCHEN_MANAGE, Permission.ORDER_READ);
+      case BARTENDER -> EnumSet.of(Permission.BAR_READ, Permission.BAR_MANAGE);
       case ACCOUNTANT ->
           EnumSet.of(
               Permission.CUSTOMER_READ,

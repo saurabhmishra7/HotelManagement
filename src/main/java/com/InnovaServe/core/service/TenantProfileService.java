@@ -2,6 +2,7 @@ package com.InnovaServe.core.service;
 
 import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
+import com.InnovaServe.restaurant.service.RestaurantStationService;
 import java.math.*;
 import java.time.LocalTime;
 import java.util.*;
@@ -14,12 +15,14 @@ public class TenantProfileService {
   private final TenantRepository tenants;
   private final StayChargePresetRepository presets;
   private final TenantContext context;
+  private final RestaurantStationService stations;
 
   public TenantProfileService(TenantRepository tenants, StayChargePresetRepository presets,
-      TenantContext context) {
+      TenantContext context, RestaurantStationService stations) {
     this.tenants = tenants;
     this.presets = presets;
     this.context = context;
+    this.stations = stations;
   }
 
   private Tenant tenant() {
@@ -37,7 +40,7 @@ public class TenantProfileService {
     return new Profile(t.getName(), t.getTenantCode(), t.getGstin(), t.getAddress(),
         t.getCheckoutTime(), t.getRestaurantServiceMode(), t.getUiPalette(), List.of("EP", "CP", "MAP", "AP").stream()
             .filter(t.getMealPlans()::contains).toList(), t.getLogoVersion(),
-        presets.findAllByTenantIdOrderByDescriptionAsc(context.tenantId()));
+        presets.findAllByTenantIdOrderByDescriptionAsc(context.tenantId()), stations.list());
   }
 
   @Transactional
@@ -136,8 +139,26 @@ public class TenantProfileService {
   public record RestaurantSettings(String serviceMode) {}
   public record Appearance(String palette) {}
   public record PresetInput(String description, BigDecimal amount) {}
+  public record StationInput(String name, Boolean active) {}
+
+  @Transactional
+  public Profile addStation(StationInput request) {
+    lockedTenant();
+    stations.add(request.name());
+    return profile();
+  }
+
+  @Transactional
+  public Profile updateStation(String code, StationInput request) {
+    lockedTenant();
+    if (request.active() == null) throw new IllegalArgumentException("Station status is required");
+    stations.update(code, request.name(), request.active());
+    return profile();
+  }
+
   public record Profile(
       String name, String tenantCode, String gstin, String address,
       LocalTime checkoutTime, String restaurantServiceMode, String uiPalette, List<String> mealPlans,
-      UUID logoVersion, List<StayChargePreset> chargePresets) {}
+      UUID logoVersion, List<StayChargePreset> chargePresets,
+      List<RestaurantStationService.Station> stations) {}
 }

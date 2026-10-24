@@ -27,7 +27,7 @@ public class NotificationService {
 
   @Transactional(readOnly = true)
   public List<Notification> inbox() {
-    return notifications.findTop20ByTenantIdAndRecipientUserIdAndDismissedAtIsNullOrderByCreatedAtDesc(context.tenantId(), context.userId());
+    return notifications.findTop20ByTenantIdAndRecipientUserIdAndDismissedAtIsNullOrderByUpdatedAtDesc(context.tenantId(), context.userId());
   }
 
   @Transactional(readOnly = true)
@@ -83,18 +83,39 @@ public class NotificationService {
   }
 
   @Transactional
-  public void orderItemReady(UUID tenantId, UUID orderId, UUID orderItemId, String location, String itemName, short quantity) {
-    sendToRole(tenantId, "ORDER_CREATE", "WAITER",
-        itemName + " ready for " + location,
-        quantity + " × " + itemName + " is ready for pickup at " + location
-            + ". Deliver it, then mark it served in Restaurant → Orders or Tables & service.",
-        "restaurant_order", "order-ready:" + orderItemId + ":" + orderId);
-  }
-
-  @Transactional
-  public void orderItemWasServed(UUID tenantId, UUID orderItemId) {
+  public void syncReadyPickup(UUID tenantId, List<String> readyItems, boolean newlyReady) {
+    String source = "restaurant_order";
+    String key = "order-ready";
+    // Retire item-level alerts from before grouping so each waiter sees one pickup alert.
     notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(
-        tenantId, "restaurant_order", "order-ready:" + orderItemId).forEach(Notification::dismiss);
+        tenantId, source, "order-ready:").forEach(Notification::dismiss);
+    List<Notification> current = notifications.findAllByTenantIdAndSourceAndSourceKey(
+        tenantId, source, key);
+    if (readyItems.isEmpty()) {
+      current.stream().filter(notification -> notification.getDismissedAt() == null).forEach(Notification::dismiss);
+      return;
+    }
+    String title = readyItems.size() == 1 ? "1 item ready for pickup"
+        : readyItems.size() + " items ready for pickup";
+    String message = "Ready for pickup: " + String.join("; ", readyItems)
+        + ". Deliver each item, then mark it served in Restaurant → Orders or Tables & service.";
+    Map<UUID, Notification> byRecipient = new HashMap<>();
+    current.forEach(notification -> byRecipient.put(notification.getRecipientUserId(), notification));
+    if (newlyReady) {
+      for (StaffUser user : recipients(tenantId, "ORDER_CREATE", "WAITER")) {
+        Notification notification = byRecipient.remove(user.getId());
+        if (notification == null) {
+          notifications.save(new Notification(tenantId, user.getId(), title, message, "IMPORTANT", source, key));
+        } else {
+          notification.reopenReadyItems(title, message);
+        }
+      }
+      byRecipient.values().stream().filter(notification -> notification.getDismissedAt() == null)
+          .forEach(Notification::dismiss);
+    } else {
+      current.stream().filter(notification -> notification.getDismissedAt() == null)
+          .forEach(notification -> notification.updateReadyItems(title, message, false));
+    }
   }
 
   @Transactional

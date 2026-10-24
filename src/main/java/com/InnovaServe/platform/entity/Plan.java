@@ -35,6 +35,9 @@ public class Plan {
   @Column(nullable = false)
   private boolean active = true;
 
+  @Column(name = "bar_enabled", nullable = false)
+  private boolean barEnabled;
+
   @Column(name = "created_at", insertable = false, updatable = false)
   private Instant createdAt;
 
@@ -55,7 +58,8 @@ public class Plan {
       BigDecimal price,
       String currency,
       String duration,
-      Set<String> modules) {
+      Set<String> modules,
+      boolean barEnabled) {
     this.familyId = familyId;
     this.version = version;
     this.name = name.trim();
@@ -63,6 +67,7 @@ public class Plan {
     this.currency = currency;
     this.duration = duration;
     this.modules = new HashSet<>(modules);
+    this.barEnabled = barEnabled;
   }
 
   public UUID getId() {
@@ -104,6 +109,8 @@ public class Plan {
   public Set<String> getModules() {
     return Set.copyOf(modules);
   }
+
+  public boolean isBarEnabled() { return barEnabled; }
 
   public void retire() {
     active = false;

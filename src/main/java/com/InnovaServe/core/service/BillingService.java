@@ -274,6 +274,22 @@ public class BillingService {
         "amount_due", i.getTotalAmount().subtract(paidTotal).subtract(creditTotal).max(BigDecimal.ZERO));
   }
 
+  public Map<String, Object> invoiceByReference(String reference) {
+    String value = reference == null ? "" : reference.trim();
+    if (value.isEmpty()) throw new IllegalArgumentException("Enter an invoice number or ID");
+    UUID invoiceId = null;
+    try {
+      invoiceId = UUID.fromString(value);
+    } catch (IllegalArgumentException ignored) {
+      // The customer-facing invoice number is not a UUID.
+    }
+    if (invoiceId != null) return invoice(invoiceId);
+    List<Invoice> matches = invoices.findAllByTenantIdAndInvoiceNumberIgnoreCase(tenant.tenantId(), value);
+    if (matches.isEmpty()) throw new NoSuchElementException("Invoice not found. Check the invoice number or ID.");
+    if (matches.size() > 1) throw new IllegalArgumentException("Multiple invoices have this number. Enter the full invoice ID.");
+    return invoice(matches.getFirst().getId());
+  }
+
   public Invoice getInvoice(UUID id) {
     return invoices
         .findByTenantIdAndId(tenant.tenantId(), id)

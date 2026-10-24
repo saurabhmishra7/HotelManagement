@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
   Optional<Invoice> findByTenantIdAndId(UUID t, UUID id);
 
+  List<Invoice> findAllByTenantIdAndInvoiceNumberIgnoreCase(UUID t, String invoiceNumber);
+
   List<Invoice> findAllByTenantIdAndAccountId(UUID t, UUID account);
 
   long countByTenantIdAndFinancialYear(UUID t, String year);

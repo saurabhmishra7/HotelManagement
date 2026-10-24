@@ -21,6 +21,7 @@ public class CoreReferenceService {
 
   private final TenantContext tenant;
   private final QRCodeRepository qrCodes;
+  private final TenantRepository tenants;
   private final CreditNoteRepository creditNotes;
   private final InvoiceRepository invoices;
   private final RoomRepository rooms;
@@ -31,6 +32,7 @@ public class CoreReferenceService {
   public CoreReferenceService(
       TenantContext tenant,
       QRCodeRepository qrCodes,
+      TenantRepository tenants,
       CreditNoteRepository creditNotes,
       InvoiceRepository invoices,
       RoomRepository rooms,
@@ -39,6 +41,7 @@ public class CoreReferenceService {
       ModuleEntitlementService moduleEntitlements) {
     this.tenant = tenant;
     this.qrCodes = qrCodes;
+    this.tenants = tenants;
     this.creditNotes = creditNotes;
     this.invoices = invoices;
     this.rooms = rooms;
@@ -51,6 +54,9 @@ public class CoreReferenceService {
   public QRCode createQRCode(String targetType, UUID targetId) {
     if (!Set.of("room", "dining_table").contains(targetType))
       throw new IllegalArgumentException("target_type must be room or dining_table");
+    // Serialize QR creation for this property so two requests cannot both pass the active-code check.
+    tenants.lockById(tenant.tenantId())
+        .orElseThrow(() -> new java.util.NoSuchElementException("Property not found"));
     moduleEntitlements.requireActive(
         tenant.tenantId(), "room".equals(targetType) ? ModuleType.STAY : ModuleType.RESTAURANT);
     boolean exists =
@@ -58,6 +64,8 @@ public class CoreReferenceService {
             ? rooms.findByTenantIdAndId(tenant.tenantId(), targetId).isPresent()
             : tables.findByTenantIdAndId(tenant.tenantId(), targetId).isPresent();
     if (!exists) throw new java.util.NoSuchElementException("QR target not found");
+    if (qrCodes.existsByTenantIdAndTargetTypeAndTargetIdAndActiveTrue(tenant.tenantId(), targetType, targetId))
+      throw new IllegalStateException("An active QR code already exists for this room or table. Open its card to view or print it.");
     byte[] bytes = new byte[32];
     RANDOM.nextBytes(bytes);
     QRCode saved = qrCodes.save(

@@ -137,13 +137,13 @@ public class RestaurantController {
   @PostMapping("/dining-tables")
   @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
   public DiningTable createTable(@RequestBody DiningTableRequest r) {
-    return service.addTable(r.tableNumber(), r.section());
+    return service.addTable(r.tableNumber(), r.section(), r.station());
   }
 
   @PatchMapping("/dining-tables/{id}")
   @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
   public DiningTable updateTable(@PathVariable UUID id, @RequestBody DiningTableRequest r) {
-    return service.updateTable(id, r.tableNumber(), r.section());
+    return service.updateTable(id, r.tableNumber(), r.section(), r.station());
   }
 
   @PostMapping("/dining-tables/{id}/dirty")
@@ -225,27 +225,27 @@ public class RestaurantController {
   }
 
   @GetMapping("/kot-batches/{id}")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_READ')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_READ', 'PERM_BAR_READ')")
   public Map<String, Object> kot(@PathVariable UUID id) {
     KotBatch batch = service.kot(id);
     return Map.of("batch", batch, "items", service.itemsForBatch(id));
   }
 
   @GetMapping("/kot-batches/pending")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_READ')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_READ', 'PERM_BAR_READ')")
   public List<Map<String, Object>> pendingKots(
       @RequestParam(required = false) String station) {
     return service.pendingKots(station);
   }
 
   @PostMapping("/order-items/{id}/preparing")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_MANAGE', 'PERM_BAR_MANAGE')")
   public OrderItem markItemPreparing(@PathVariable UUID id) {
     return service.markItemPreparing(id);
   }
 
   @PostMapping("/order-items/{id}/ready")
-  @PreAuthorize("hasAuthority('PERM_KITCHEN_MANAGE')")
+  @PreAuthorize("hasAnyAuthority('PERM_KITCHEN_MANAGE', 'PERM_BAR_MANAGE')")
   public OrderItem markItemReady(@PathVariable UUID id) {
     return service.markItemReady(id);
   }
@@ -269,7 +269,7 @@ public class RestaurantController {
   public record CategoryRequest(String name, @JsonProperty("sort_order") Integer sortOrder) {}
 
   public record DiningTableRequest(
-      @JsonProperty("table_number") String tableNumber, String section) {}
+      @JsonProperty("table_number") String tableNumber, String section, String station) {}
 
   public record MenuItemRequest(
       @JsonProperty("category_id") UUID categoryId,

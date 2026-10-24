@@ -142,8 +142,8 @@ public class BillingController {
 
   @GetMapping("/invoices/{id}")
   @PreAuthorize("hasAuthority('PERM_BILLING_READ')")
-  public Map<String, Object> invoice(@PathVariable UUID id) {
-    return service.invoice(id);
+  public Map<String, Object> invoice(@PathVariable String id) {
+    return service.invoiceByReference(id);
   }
 
   @PostMapping("/invoices/{id}/lock")

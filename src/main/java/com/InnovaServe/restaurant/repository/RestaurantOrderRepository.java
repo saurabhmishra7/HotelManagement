@@ -34,6 +34,8 @@ public interface RestaurantOrderRepository extends JpaRepository<RestaurantOrder
 
   List<RestaurantOrder> findAllByTenantIdAndStayIdOrderByCreatedAtDesc(UUID t, UUID stayId);
 
+  List<RestaurantOrder> findAllByTenantIdAndIdIn(UUID tenantId, Collection<UUID> ids);
+
   List<RestaurantOrder> findAllByTenantIdAndGuestSessionIdOrderByCreatedAtAsc(UUID tenantId, UUID guestSessionId);
 
   Optional<RestaurantOrder> findByTenantIdAndId(UUID t, UUID id);

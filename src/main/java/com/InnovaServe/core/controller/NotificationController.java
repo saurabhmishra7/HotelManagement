@@ -24,11 +24,12 @@ public class NotificationController {
   public record Inbox(List<NotificationView> notifications, @JsonProperty("unread_count") long unreadCount) {}
   public record NotificationView(UUID id, String title, String message, String category, String source,
       @JsonProperty("source_key") String sourceKey,
-      @JsonProperty("created_at") Instant createdAt, @JsonProperty("read_at") Instant readAt) {
+      @JsonProperty("created_at") Instant createdAt, @JsonProperty("updated_at") Instant updatedAt,
+      @JsonProperty("read_at") Instant readAt) {
     static NotificationView from(Notification notification) {
       return new NotificationView(notification.getId(), notification.getTitle(), notification.getMessage(),
           notification.getCategory(), notification.getSource(), notification.getSourceKey(),
-          notification.getCreatedAt(), notification.getReadAt());
+          notification.getCreatedAt(), notification.getUpdatedAt(), notification.getReadAt());
     }
   }
 }

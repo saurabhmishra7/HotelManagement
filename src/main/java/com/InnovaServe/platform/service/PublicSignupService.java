@@ -213,7 +213,7 @@ public class PublicSignupService {
     if ("completed".equals(intent.getStatus())) return completedResult(intent.getTenantId());
     if (!"pending".equals(intent.getStatus()) || !intent.getExpiresAt().isAfter(Instant.now(clock)))
       throw new IllegalArgumentException("Signup checkout has expired");
-    requireAvailableOwnerEmail(intent.getOwnerEmail());
+    requireAvailableOwnerEmail(intent.getOwnerEmail(), intent.getId());
     Plan plan = plans.findById(intent.getPlanId()).filter(Plan::isActive)
         .orElseThrow(() -> new IllegalStateException("Selected plan is no longer active"));
     Tenant tenant = createTenant(intent.getPropertyName(), intent.getGstin(), intent.getAddress(),
@@ -247,8 +247,14 @@ public class PublicSignupService {
   }
 
   private void requireAvailableOwnerEmail(String email) {
+    requireAvailableOwnerEmail(email, null);
+  }
+
+  private void requireAvailableOwnerEmail(String email, UUID currentIntentId) {
     if (users.existsOwnerEmailIgnoreCase(email)
-        || intents.existsByOwnerEmailIgnoreCaseAndStatus(email, "pending"))
+        || (currentIntentId == null
+            ? intents.existsByOwnerEmailIgnoreCaseAndStatus(email, "pending")
+            : intents.existsByOwnerEmailIgnoreCaseAndStatusAndIdNot(email, "pending", currentIntentId)))
       throw new IllegalStateException("This email already owns a property or has a signup in progress");
   }
 

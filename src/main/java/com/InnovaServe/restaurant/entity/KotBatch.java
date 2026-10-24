@@ -11,7 +11,7 @@ public class KotBatch extends TenantEntity {
   @Column(name = "order_id", nullable = false)
   private UUID orderId;
 
-  @Column(nullable = false, length = 10)
+  @Column(nullable = false, length = 32)
   private String station;
 
   @Column(name = "batch_number", nullable = false)

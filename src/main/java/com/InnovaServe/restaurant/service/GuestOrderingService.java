@@ -32,6 +32,7 @@ public class GuestOrderingService {
   private final RestaurantBillBreakdownService billBreakdown;
   private final RoomServiceRequestService roomServiceRequests;
   private final GuestQrSessionService guestQrSessions;
+  private final RestaurantStationService stations;
 
   public GuestOrderingService(
       QRCodeRepository qrCodes,
@@ -48,7 +49,8 @@ public class GuestOrderingService {
       NotificationService notifications,
       RestaurantBillBreakdownService billBreakdown,
       RoomServiceRequestService roomServiceRequests,
-      GuestQrSessionService guestQrSessions) {
+      GuestQrSessionService guestQrSessions,
+      RestaurantStationService stations) {
     this.qrCodes = qrCodes;
     this.tenants = tenants;
     this.categories = categories;
@@ -64,6 +66,7 @@ public class GuestOrderingService {
     this.billBreakdown = billBreakdown;
     this.roomServiceRequests = roomServiceRequests;
     this.guestQrSessions = guestQrSessions;
+    this.stations = stations;
   }
 
   @Transactional(readOnly = true)
@@ -75,8 +78,16 @@ public class GuestOrderingService {
             .findById(tenantId)
             .orElseThrow(() -> new NoSuchElementException("Property not found"));
     boolean restaurantAvailable = entitlements.isActive(tenantId, ModuleType.RESTAURANT);
+    boolean barAvailable = restaurantAvailable && stations.barAvailable(tenantId);
+    DiningTable targetTable = "dining_table".equals(qrCode.getTargetType())
+        ? tables.findByTenantIdAndId(tenantId, qrCode.getTargetId())
+            .orElseThrow(() -> new NoSuchElementException("QR table not found")) : null;
+    String serviceStation = targetTable == null ? "kitchen" : targetTable.getStation();
     List<MenuItem> availableItems = restaurantAvailable
-        ? menuItems.findAllByTenantIdOrderByName(tenantId).stream().filter(MenuItem::isActive).toList()
+        ? menuItems.findAllByTenantIdOrderByName(tenantId).stream()
+            .filter(MenuItem::isActive)
+            .filter(item -> StationOrderingPolicy.allows(serviceStation, item.getStation()))
+            .filter(item -> barAvailable || "kitchen".equals(item.getStation())).toList()
         : List.of();
     Set<UUID> categoryIds =
         availableItems.stream().map(MenuItem::getCategoryId).collect(java.util.stream.Collectors.toSet());
@@ -107,10 +118,9 @@ public class GuestOrderingService {
     Map<String, Object> target = new LinkedHashMap<>();
     target.put("type", qrCode.getTargetType());
     target.put("id", qrCode.getTargetId());
-    if ("dining_table".equals(qrCode.getTargetType())) {
-      tables
-          .findByTenantIdAndId(tenantId, qrCode.getTargetId())
-          .ifPresent(table -> target.put("table_number", table.getTableNumber()));
+    if (targetTable != null) {
+      target.put("table_number", targetTable.getTableNumber());
+      target.put("station", serviceStation);
     } else {
       stayLookup.findRoomNumber(tenantId, qrCode.getTargetId())
           .ifPresent(number -> target.put("room_number", number));
@@ -147,18 +157,21 @@ public class GuestOrderingService {
 
     UUID tableId = null;
     UUID stayId = null;
+    String serviceStation = "kitchen";
     String orderType;
     String location;
     if ("dining_table".equals(qrCode.getTargetType())) {
       DiningTable table =
           tables
-              .findByTenantIdAndId(tenantId, qrCode.getTargetId())
+              .lockByTenantIdAndId(tenantId, qrCode.getTargetId())
               .orElseThrow(() -> new NoSuchElementException("QR table not found"));
       if ("dirty".equals(table.getStatus())
           || ("billed".equals(table.getStatus())
               && !guestQrSessions.latestTableBillPaid(tenantId, table.getId())))
         throw new IllegalStateException("This table is not accepting new orders");
       tableId = table.getId();
+      stations.requireActive(tenantId, table.getStation());
+      serviceStation = table.getStation();
       location = "Table " + table.getTableNumber();
       if (Set.of("free", "billed").contains(table.getStatus())) table.setStatus("occupied");
       orderType = "dine_in";
@@ -183,6 +196,7 @@ public class GuestOrderingService {
     RestaurantOrder order;
     if (existingOrder == null) {
       order = new RestaurantOrder(tenantId, orderType, tableId, stayId, "qr_guest", true, null);
+      order.assignServiceStation(serviceStation);
       order.attachGuestSession(guestSessionId);
       orders.save(order);
     } else {
@@ -203,6 +217,8 @@ public class GuestOrderingService {
               .findByTenantIdAndId(tenantId, requested.menuItemId())
               .filter(MenuItem::isActive)
               .orElseThrow(() -> new NoSuchElementException("Active menu item not found"));
+      stations.requireActive(tenantId, item.getStation());
+      StationOrderingPolicy.requireAllowed(order.getServiceStation(), item.getStation());
       orderItems.save(new OrderItem(tenantId, order.getId(), item.getId(),
           requested.quantity(), requested.notes(), "pending_confirmation"));
     }

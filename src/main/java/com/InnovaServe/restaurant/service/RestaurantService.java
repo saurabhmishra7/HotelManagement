@@ -14,6 +14,8 @@ import com.InnovaServe.restaurant.repository.*;
 import java.math.*;
 import java.time.*;
 import java.util.*;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +40,7 @@ public class RestaurantService {
   private final NotificationService notifications;
   private final GuestQrSessionService guestSessions;
   private final RestaurantBillBreakdownService billBreakdown;
+  private final RestaurantStationService stations;
 
   public RestaurantService(
       TenantContext t,
@@ -56,7 +59,8 @@ public class RestaurantService {
       ApplicationEventPublisher events,
       NotificationService notifications,
       GuestQrSessionService guestSessions,
-      RestaurantBillBreakdownService billBreakdown) {
+      RestaurantBillBreakdownService billBreakdown,
+      RestaurantStationService stations) {
     tenant = t;
     this.tenants = tenants;
     categories = c;
@@ -74,6 +78,7 @@ public class RestaurantService {
     this.notifications = notifications;
     this.guestSessions = guestSessions;
     this.billBreakdown = billBreakdown;
+    this.stations = stations;
   }
 
   public Map<String, Object> recipe(UUID menuItemId) {
@@ -105,7 +110,11 @@ public class RestaurantService {
         category == null
             ? items.findAllByTenantIdOrderByName(tenant.tenantId())
             : items.findAllByTenantIdAndCategoryIdOrderByName(tenant.tenantId(), category);
-    return active == null ? found : found.stream().filter(i -> i.isActive() == active).toList();
+    boolean barAvailable = active == null || stations.barAvailable();
+    return found.stream()
+        .filter(i -> active == null || i.isActive() == active)
+        .filter(i -> barAvailable || "kitchen".equals(i.getStation()))
+        .toList();
   }
 
   @Transactional
@@ -123,6 +132,7 @@ public class RestaurantService {
         .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
     String normalizedCode = normalizeItemCode(itemCode);
     ensureItemCodeAvailable(normalizedCode, null);
+    stations.requireActive(station);
     return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg, foodType));
   }
 
@@ -152,6 +162,8 @@ public class RestaurantService {
       ensureItemCodeAvailable(normalizedCode, id);
       itemCode = normalizedCode == null ? "" : normalizedCode;
     }
+    if (station != null && !station.equals(item.getStation())) stations.requireActive(station);
+    if (Boolean.TRUE.equals(active) && !item.isActive()) stations.requireActive(station == null ? item.getStation() : station);
     item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, foodType, active);
     return item;
   }
@@ -225,28 +237,38 @@ public class RestaurantService {
   }
 
   @Transactional
-  public DiningTable addTable(String number, String section) {
+  public DiningTable addTable(String number, String section, String station) {
     if (number == null || number.isBlank() || number.length() > 10)
       throw new IllegalArgumentException("Table number is required and must be at most 10 characters");
     String normalized = number.trim();
     if (tables.existsByTenantIdAndTableNumber(tenant.tenantId(), normalized))
       throw new IllegalArgumentException("Table number already exists");
-    return tables.save(new DiningTable(tenant.tenantId(), normalized, section));
+    if (section != null && section.length() > 50)
+      throw new IllegalArgumentException("Section must be at most 50 characters");
+    String assignedStation = station == null ? "kitchen" : station;
+    stations.requireActive(assignedStation);
+    DiningTable table = new DiningTable(tenant.tenantId(), normalized, section);
+    table.assignStation(assignedStation);
+    return tables.save(table);
   }
 
   @Transactional
-  public DiningTable updateTable(UUID id, String number, String section) {
+  public DiningTable updateTable(UUID id, String number, String section, String station) {
     if (number == null || number.isBlank() || number.length() > 10)
       throw new IllegalArgumentException("Table number is required and must be at most 10 characters");
     String normalizedNumber = number.trim();
     if (section != null && section.length() > 50)
       throw new IllegalArgumentException("Section must be at most 50 characters");
-    DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), id)
+    DiningTable table = tables.lockByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
     if (!"free".equals(table.getStatus()))
       throw new IllegalStateException("Only vacant tables can be edited");
     if (tables.existsByTenantIdAndTableNumberAndIdNot(tenant.tenantId(), normalizedNumber, id))
       throw new IllegalArgumentException("Table number already exists");
+    if (station != null && !station.equals(table.getStation())) {
+      stations.requireActive(station);
+      table.assignStation(station);
+    }
     table.updateDetails(normalizedNumber, section == null || section.isBlank() ? null : section.trim());
     return table;
   }
@@ -258,6 +280,11 @@ public class RestaurantService {
     if ("room_service".equals(type))
       moduleEntitlements.requireActive(tenant.tenantId(), ModuleType.STAY);
     UUID stayId = null;
+    String serviceStation = "kitchen";
+    if ("dine_in".equals(type) && tableId == null)
+      throw new IllegalArgumentException("Choose a dining table");
+    if (!"dine_in".equals(type) && tableId != null)
+      throw new IllegalArgumentException("Only dine-in orders can be assigned to a table");
     if ("room_service".equals(type) && (roomNumber == null || roomNumber.isBlank()))
       throw new IllegalArgumentException("Choose an occupied room for room service");
     if (roomNumber != null && !roomNumber.isBlank()) {
@@ -272,14 +299,17 @@ public class RestaurantService {
     if (tableId != null) {
       DiningTable table =
           tables
-              .findByTenantIdAndId(tenant.tenantId(), tableId)
+              .lockByTenantIdAndId(tenant.tenantId(), tableId)
               .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
       if (!"free".equals(table.getStatus())) throw new IllegalStateException("Table is not free");
+      stations.requireActive(table.getStation());
+      serviceStation = table.getStation();
       table.setStatus("occupied");
     }
-    return orders.save(
-        new RestaurantOrder(
-            tenant.tenantId(), type, tableId, stayId, "staff", false, tenant.userId()));
+    RestaurantOrder order = new RestaurantOrder(
+        tenant.tenantId(), type, tableId, stayId, "staff", false, tenant.userId());
+    order.assignServiceStation(serviceStation);
+    return orders.save(order);
   }
 
   public RestaurantOrder getOrder(UUID id) {
@@ -460,6 +490,8 @@ public class RestaurantService {
               .findByTenantIdAndId(t, r.menuItemId())
               .filter(MenuItem::isActive)
               .orElseThrow(() -> new NoSuchElementException("Active menu item not found"));
+      stations.requireActive(item.getStation());
+      StationOrderingPolicy.requireAllowed(order.getServiceStation(), item.getStation());
       OrderItem oi =
           orderItems.save(new OrderItem(t, orderId, item.getId(), r.quantity(), r.notes(), "sent"));
       stationItems.computeIfAbsent(item.getStation(), k -> new ArrayList<>()).add(oi);
@@ -504,6 +536,7 @@ public class RestaurantService {
           items
               .findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
               .orElseThrow(() -> new NoSuchElementException("Menu item not found"));
+      StationOrderingPolicy.requireAllowed(order.getServiceStation(), menuItem.getStation());
       byStation.computeIfAbsent(menuItem.getStation(), ignored -> new ArrayList<>()).add(item);
     }
     List<KotBatch> createdBatches = new ArrayList<>();
@@ -538,9 +571,11 @@ public class RestaurantService {
   }
 
   public KotBatch kot(UUID id) {
-    return batches
+    KotBatch batch = batches
         .findByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
+    requirePreparationAccess(batch.getStation(), false);
+    return batch;
   }
 
   public List<Map<String, Object>> orderItemsView(UUID id) {
@@ -584,9 +619,15 @@ public class RestaurantService {
   }
 
   public List<Map<String, Object>> pendingKots(String station) {
-    if (station != null && !Set.of("kitchen", "bar").contains(station))
-      throw new IllegalArgumentException("station must be kitchen or bar");
-    List<KotBatch> pendingBatches = batches.findPendingByTenantIdAndStation(tenant.tenantId(), station);
+    if (station != null) stations.requireKnown(station);
+    if (station != null) requirePreparationAccess(station, false);
+    boolean kitchenAccess = hasPreparationPermission("kitchen", false);
+    boolean barAccess = hasPreparationPermission("bar", false) && stations.barAvailable();
+    if (!kitchenAccess && !barAccess) throw new AccessDeniedException("Preparation display access is required");
+    String queryStation = station == null && !barAccess ? "kitchen" : station;
+    List<KotBatch> pendingBatches = batches.findPendingByTenantIdAndStation(tenant.tenantId(), queryStation).stream()
+        .filter(batch -> "kitchen".equals(batch.getStation()) ? kitchenAccess : barAccess)
+        .toList();
     if (pendingBatches.isEmpty()) return List.of();
 
     List<UUID> batchIds = pendingBatches.stream().map(KotBatch::getId).toList();
@@ -614,21 +655,56 @@ public class RestaurantService {
         orderItems
             .findByTenantIdAndId(tenant.tenantId(), itemId)
             .orElseThrow(() -> new NoSuchElementException("Order item not found"));
+    requireItemPreparationAccess(item);
     item.markPreparing();
     return item;
   }
 
   @Transactional
   public OrderItem markItemReady(UUID itemId) {
+    tenants.lockById(tenant.tenantId()).orElseThrow(() -> new NoSuchElementException("Tenant not found"));
     OrderItem item = orderItems.lockByTenantIdAndId(tenant.tenantId(), itemId)
         .orElseThrow(() -> new NoSuchElementException("Order item not found"));
+    requireItemPreparationAccess(item);
     item.markReady();
-    RestaurantOrder order = getOrder(item.getOrderId());
-    String location = orderLocation(order);
-    String itemName = items.findByTenantIdAndId(tenant.tenantId(), item.getMenuItemId())
-        .map(MenuItem::getName).orElse("Order item");
-    notifications.orderItemReady(tenant.tenantId(), order.getId(), itemId, location, itemName, item.getQuantity());
+    refreshReadyNotifications(true);
     return item;
+  }
+
+  private void refreshReadyNotifications(boolean newlyReady) {
+    List<OrderItem> readyItems = orderItems.findAllByTenantIdAndStatusOrderByReadyAtAscIdAsc(
+        tenant.tenantId(), "ready");
+    Set<UUID> orderIds = new HashSet<>();
+    Set<UUID> menuIds = new HashSet<>();
+    readyItems.forEach(item -> {
+      orderIds.add(item.getOrderId());
+      menuIds.add(item.getMenuItemId());
+    });
+    Map<UUID, RestaurantOrder> readyOrders = orderIds.isEmpty() ? Map.of()
+        : orders.findAllByTenantIdAndIdIn(tenant.tenantId(), orderIds).stream()
+            .collect(java.util.stream.Collectors.toMap(RestaurantOrder::getId, order -> order));
+    Map<UUID, String> names = menuIds.isEmpty() ? Map.of()
+        : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuIds).stream()
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+    Set<UUID> tableIds = new HashSet<>();
+    readyOrders.values().stream().map(RestaurantOrder::getTableId).filter(Objects::nonNull)
+        .forEach(tableIds::add);
+    Map<UUID, String> tableNumbers = tableIds.isEmpty() ? Map.of()
+        : tables.findAllByTenantIdAndIdIn(tenant.tenantId(), tableIds).stream()
+            .collect(java.util.stream.Collectors.toMap(DiningTable::getId, DiningTable::getTableNumber));
+    Map<UUID, String> locations = new HashMap<>();
+    for (RestaurantOrder order : readyOrders.values()) {
+      String location = order.getTableId() != null
+          ? "Table " + tableNumbers.getOrDefault(order.getTableId(), "unknown")
+          : orderLocation(order);
+      locations.put(order.getId(), location);
+    }
+    List<String> details = readyItems.stream().map(item ->
+        locations.getOrDefault(item.getOrderId(), "Unknown location")
+            + " · Order " + item.getOrderId().toString().substring(0, 8).toUpperCase(Locale.ROOT)
+            + ": " + item.getQuantity() + " × " + names.getOrDefault(item.getMenuItemId(), "Order item"))
+        .toList();
+    notifications.syncReadyPickup(tenant.tenantId(), details, newlyReady);
   }
 
   private String orderLocation(RestaurantOrder order) {
@@ -647,25 +723,46 @@ public class RestaurantService {
 
   @Transactional
   public OrderItem markItemServed(UUID itemId) {
+    Tenant tenantRecord = tenants.lockById(tenant.tenantId())
+        .orElseThrow(() -> new NoSuchElementException("Tenant not found"));
     OrderItem item =
         orderItems
             .lockByTenantIdAndId(tenant.tenantId(), itemId)
             .orElseThrow(() -> new NoSuchElementException("Order item not found"));
-    boolean printerOnly = tenants.findById(tenant.tenantId())
-        .map(Tenant::getRestaurantServiceMode)
-        .filter("thermal_printer"::equals)
-        .isPresent();
+    boolean printerOnly = "thermal_printer".equals(tenantRecord.getRestaurantServiceMode());
+    boolean wasReady = "ready".equals(item.getStatus());
     item.markServed(printerOnly);
-    notifications.orderItemWasServed(tenant.tenantId(), itemId);
+    if (wasReady) refreshReadyNotifications(false);
     events.publishEvent(new OrderItemServedEvent(tenant.tenantId(), item.getMenuItemId(), item.getId(), item.getQuantity()));
     return item;
   }
 
   @Transactional
   public KotBatch markPrinted(UUID id) {
-    KotBatch b = kot(id);
+    KotBatch b = batches.findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
     b.markPrinted();
     return b;
+  }
+
+  private void requireItemPreparationAccess(OrderItem item) {
+    if (item.getKotBatchId() == null) throw new IllegalStateException("Order item has no preparation ticket");
+    KotBatch batch = batches.findByTenantIdAndId(tenant.tenantId(), item.getKotBatchId())
+        .orElseThrow(() -> new NoSuchElementException("KOT batch not found"));
+    requirePreparationAccess(batch.getStation(), true);
+  }
+
+  private void requirePreparationAccess(String station, boolean manage) {
+    if (!"kitchen".equals(station)) stations.requireBarAccess();
+    if (!hasPreparationPermission(station, manage))
+      throw new AccessDeniedException("Access to this preparation station is not permitted");
+  }
+
+  private boolean hasPreparationPermission(String station, boolean manage) {
+    var auth = SecurityContextHolder.getContext().getAuthentication();
+    String required = "PERM_" + ("kitchen".equals(station) ? "KITCHEN" : "BAR") + (manage ? "_MANAGE" : "_READ");
+    return auth != null && auth.getAuthorities().stream()
+        .anyMatch(authority -> required.equals(authority.getAuthority()));
   }
 
   @Transactional

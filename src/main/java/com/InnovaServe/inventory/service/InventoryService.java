@@ -90,16 +90,22 @@ public class InventoryService {
   public PurchaseResult purchase(UUID id, BigDecimal quantity, BigDecimal unitCost, String vendor, String paymentMode) {
     if (quantity == null || quantity.signum() <= 0 || quantity.scale() > 3) throw new IllegalArgumentException("Purchase quantity must be greater than zero with at most three decimals");
     if (unitCost == null || unitCost.signum() < 0 || unitCost.scale() > 2) throw new IllegalArgumentException("Unit cost must be zero or greater with at most two decimals");
-    if (paymentMode == null || !Set.of("cash", "card", "upi", "petty_cash").contains(paymentMode)) throw new IllegalArgumentException("Payment mode must be cash, card, UPI, or petty cash");
     if (vendor != null && vendor.trim().length() > 150) throw new IllegalArgumentException("Vendor name must be at most 150 characters");
     InventoryItem item = ownedItem(id, true);
+    boolean recordExpense = entitlements.isActive(tenant.tenantId(), ModuleType.EXPENSE);
+    if (recordExpense && (paymentMode == null || !Set.of("cash", "card", "upi", "petty_cash").contains(paymentMode)))
+      throw new IllegalArgumentException("Payment mode must be cash, card, UPI, or petty cash");
     BigDecimal total = quantity.multiply(unitCost).setScale(2, RoundingMode.HALF_UP);
-    String department = switch (item.getUsageType()) { case "restaurant" -> "restaurant"; case "room" -> "rooms"; default -> "general"; };
-    Expense expense = expenses.addInventoryPurchaseExpense(department, vendor == null || vendor.isBlank() ? null : vendor.trim(), total, paymentMode);
+    UUID expenseId = null;
+    if (recordExpense) {
+      String department = switch (item.getUsageType()) { case "restaurant" -> "restaurant"; case "room" -> "rooms"; default -> "general"; };
+      Expense expense = expenses.addInventoryPurchaseExpense(department, vendor == null || vendor.isBlank() ? null : vendor.trim(), total, paymentMode);
+      expenseId = expense.getId();
+    }
     StockPurchase purchase = purchases.save(new StockPurchase(tenant.tenantId(), id, quantity, unitCost, total,
-        vendor == null || vendor.isBlank() ? null : vendor.trim(), expense.getId(), tenant.userId()));
+        vendor == null || vendor.isBlank() ? null : vendor.trim(), expenseId, tenant.userId()));
     item.purchase(quantity, unitCost);
-    return new PurchaseResult(purchase, item.getAverageUnitCost(), expense.getId());
+    return new PurchaseResult(purchase, item.getAverageUnitCost(), expenseId);
   }
 
   @Transactional

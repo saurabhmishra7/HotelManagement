@@ -46,6 +46,7 @@ public class PlatformPlanController {
             request.currency(),
             request.duration(),
             request.modules(),
+            Boolean.TRUE.equals(request.barEnabled()),
             currentAdminId()));
   }
 
@@ -60,6 +61,7 @@ public class PlatformPlanController {
             request.currency(),
             request.duration(),
             request.modules(),
+            request.barEnabled(),
             request.active(),
             currentAdminId());
   }
@@ -75,7 +77,8 @@ public class PlatformPlanController {
       BigDecimal price,
       String currency,
       String duration,
-      Collection<String> modules) {}
+      Collection<String> modules,
+      @JsonProperty("bar_enabled") Boolean barEnabled) {}
 
   public record PlanChangeRequest(
       String name,
@@ -83,5 +86,6 @@ public class PlatformPlanController {
       String currency,
       String duration,
       Collection<String> modules,
+      @JsonProperty("bar_enabled") Boolean barEnabled,
       Boolean active) {}
 }

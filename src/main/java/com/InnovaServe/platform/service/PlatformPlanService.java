@@ -44,8 +44,10 @@ public class PlatformPlanService {
       String currency,
       String duration,
       Collection<String> moduleNames,
+      boolean barEnabled,
       UUID adminId) {
     PlanInput input = validate(name, price, currency, duration, moduleNames);
+    if (barEnabled && !input.modules().contains("restaurant")) throw new IllegalArgumentException("Bar requires the Restaurant module");
     Plan plan =
         plans.save(
             new Plan(
@@ -55,7 +57,7 @@ public class PlatformPlanService {
                 input.price(),
                 input.currency(),
                 input.duration(),
-                input.modules()));
+                input.modules(), barEnabled));
     audit.record(adminId, "PLAN_CREATED", "plan", plan.getId(), null, snapshot(plan));
     return plan;
   }
@@ -68,6 +70,7 @@ public class PlatformPlanService {
       String currency,
       String duration,
       Collection<String> moduleNames,
+      Boolean barEnabled,
       Boolean active,
       UUID adminId) {
     Plan existing =
@@ -78,7 +81,7 @@ public class PlatformPlanService {
         && price == null
         && currency == null
         && duration == null
-        && moduleNames == null) {
+        && moduleNames == null && barEnabled == null) {
       existing.retire();
       Map<String, Object> after = snapshot(existing);
       after.put("active_subscriptions_updated", 0);
@@ -91,7 +94,7 @@ public class PlatformPlanService {
     }
     if (!existing.isActive()) throw new IllegalStateException("Retired plan versions are immutable");
     boolean hasOfferChanges =
-        name != null || price != null || currency != null || duration != null || moduleNames != null;
+        name != null || price != null || currency != null || duration != null || moduleNames != null || barEnabled != null;
     if (!hasOfferChanges) {
       if (Boolean.TRUE.equals(active)) return snapshot(existing);
       throw new IllegalArgumentException("Provide plan terms or set active to false");
@@ -104,6 +107,8 @@ public class PlatformPlanService {
             currency == null ? existing.getCurrency() : currency,
             duration == null ? existing.getDuration() : duration,
             moduleNames == null ? existing.getModules() : moduleNames);
+    boolean nextBarEnabled = barEnabled == null ? existing.isBarEnabled() : barEnabled;
+    if (nextBarEnabled && !input.modules().contains("restaurant")) throw new IllegalArgumentException("Bar requires the Restaurant module");
     existing.retire();
     plans.saveAndFlush(existing);
     Plan version =
@@ -115,7 +120,7 @@ public class PlatformPlanService {
                 input.price(),
                 input.currency(),
                 input.duration(),
-                input.modules()));
+                input.modules(), nextBarEnabled));
     if (Boolean.FALSE.equals(active)) version.retire();
     Map<String, Object> after = snapshot(version);
     Map<String, Integer> propagation = version.isActive()
@@ -140,9 +145,11 @@ public class PlatformPlanService {
     for (TenantSubscription subscription : rows) {
       if ("scheduled".equals(subscription.getStatus())) {
         subscription.replaceModules(version.getModules());
+        subscription.setBarEnabled(version.isBarEnabled());
         scheduledUpdated++;
       } else if (!subscription.getExpiresOn().isBefore(today)) {
         subscription.replaceModules(version.getModules());
+        subscription.setBarEnabled(version.isBarEnabled());
         entitlements.applySubscription(subscription.getTenantId(), version.getModules(),
             PlatformSubscriptionService.expiresAt(subscription.getExpiresOn()));
         activeUpdated++;
@@ -168,6 +175,7 @@ public class PlatformPlanService {
     result.put("duration", plan.getDuration());
     result.put("active", plan.isActive());
     result.put("modules", plan.getModules().stream().sorted().toList());
+    result.put("bar_enabled", plan.isBarEnabled());
     return result;
   }
 

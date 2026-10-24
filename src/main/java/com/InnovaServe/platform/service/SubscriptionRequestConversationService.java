@@ -209,7 +209,8 @@ public class SubscriptionRequestConversationService {
         "active",
         null,
         newPlan.getModules(),
-        false));
+        false,
+        newPlan.isBarEnabled()));
     entitlements.applySubscription(tenantId, replacement.getModules(),
         PlatformSubscriptionService.expiresAt(replacement.getExpiresOn()));
 

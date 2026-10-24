@@ -65,6 +65,19 @@ public class TenantProfileController {
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile deletePreset(@PathVariable UUID id) { return service.deletePreset(id); }
 
+  @PostMapping("/stations")
+  @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
+  public TenantProfileService.Profile addStation(@RequestBody TenantProfileService.StationInput request) {
+    return service.addStation(request);
+  }
+
+  @PutMapping("/stations/{code}")
+  @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
+  public TenantProfileService.Profile updateStation(@PathVariable String code,
+      @RequestBody TenantProfileService.StationInput request) {
+    return service.updateStation(code, request);
+  }
+
   @PostMapping(value = "/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile uploadLogo(@RequestPart("file") MultipartFile file) {
