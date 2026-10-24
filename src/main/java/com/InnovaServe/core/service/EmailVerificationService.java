@@ -12,11 +12,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,29 +23,23 @@ public class EmailVerificationService {
   private static final Duration TOKEN_LIFETIME = Duration.ofHours(48);
 
   private final StaffUserRepository users;
-  private final ObjectProvider<JavaMailSender> mailSenders;
-  private final String mailHost;
-  private final String senderAddress;
+  private final EmailSender emailSender;
   private final String verificationBaseUrl;
 
   public EmailVerificationService(
       StaffUserRepository users,
-      ObjectProvider<JavaMailSender> mailSenders,
-      @Value("${spring.mail.host:}") String mailHost,
-      @Value("${app.mail.from:no-reply@innova.example}") String senderAddress,
-      @Value("${app.email-verification.base-url:http://localhost:5173/}") String verificationBaseUrl) {
+      EmailSender emailSender,
+      @Value("${app.email-verification.base-url:${APP_EMAIL_VERIFICATION_BASE_URL:http://localhost:5173/}}")
+          String verificationBaseUrl) {
     this.users = users;
-    this.mailSenders = mailSenders;
-    this.mailHost = mailHost;
-    this.senderAddress = senderAddress;
+    this.emailSender = emailSender;
     this.verificationBaseUrl = verificationBaseUrl;
   }
 
   @Transactional
   public void send(StaffUser user, String tenantCode) {
     if (user.getEmail() == null || user.getEmail().isBlank()) return;
-    JavaMailSender sender = mailSenders.getIfAvailable();
-    if (sender == null || mailHost == null || mailHost.isBlank()) {
+    if (!emailSender.isAvailable()) {
       log.info("Email verification is not configured for staff user {}", user.getId());
       return;
     }
@@ -63,16 +53,12 @@ public class EmailVerificationService {
     String link = verificationBaseUrl + separator + "tenant_code="
         + URLEncoder.encode(tenantCode, StandardCharsets.UTF_8)
         + "&verify_token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
-    SimpleMailMessage message = new SimpleMailMessage();
-    message.setFrom(senderAddress);
-    message.setTo(user.getEmail());
-    message.setSubject("Verify your InnovaServe email");
-    message.setText("Your InnovaServe account is ready. Verify your email using this link "
+    String text = "Your InnovaServe account is ready. Verify your email using this link "
         + "within 48 hours:\n\n" + link
-        + "\n\nVerification is optional and does not affect access to your account.");
+        + "\n\nVerification is optional and does not affect access to your account.";
     try {
-      sender.send(message);
-    } catch (MailException exception) {
+      emailSender.send(user.getEmail(), "Verify your InnovaServe email", text);
+    } catch (EmailDeliveryException exception) {
       log.error("Could not send verification email for staff user {}", user.getId(), exception);
     }
   }

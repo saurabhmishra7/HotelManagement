@@ -13,11 +13,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,26 +27,20 @@ public class PasswordResetService {
   private final TenantRepository tenants;
   private final StaffUserRepository users;
   private final PasswordEncoder passwords;
-  private final ObjectProvider<JavaMailSender> mailSenders;
-  private final String mailHost;
-  private final String senderAddress;
+  private final EmailSender emailSender;
   private final String resetBaseUrl;
 
   public PasswordResetService(
       TenantRepository tenants,
       StaffUserRepository users,
       PasswordEncoder passwords,
-      ObjectProvider<JavaMailSender> mailSenders,
-      @Value("${spring.mail.host:}") String mailHost,
-      @Value("${app.mail.from:no-reply@innova.example}") String senderAddress,
-      @Value("${app.password-reset.base-url:http://localhost:3000/reset-password}")
+      EmailSender emailSender,
+      @Value("${app.password-reset.base-url:${APP_PASSWORD_RESET_BASE_URL:http://localhost:3000/reset-password}}")
           String resetBaseUrl) {
     this.tenants = tenants;
     this.users = users;
     this.passwords = passwords;
-    this.mailSenders = mailSenders;
-    this.mailHost = mailHost;
-    this.senderAddress = senderAddress;
+    this.emailSender = emailSender;
     this.resetBaseUrl = resetBaseUrl;
   }
 
@@ -58,8 +48,7 @@ public class PasswordResetService {
   public void request(String tenantCode, String email) {
     if (tenantCode == null || tenantCode.isBlank() || email == null || email.isBlank())
       throw new IllegalArgumentException("tenant_code and email are required");
-    JavaMailSender mailSender = mailSenders.getIfAvailable();
-    if (mailHost == null || mailHost.isBlank() || mailSender == null)
+    if (!emailSender.isAvailable())
       throw new PasswordResetUnavailableException();
 
     var tenant = tenants.findByTenantCodeIgnoreCase(tenantCode.trim()).orElse(null);
@@ -83,17 +72,12 @@ public class PasswordResetService {
             + URLEncoder.encode(tenant.getTenantCode(), StandardCharsets.UTF_8)
             + "&token="
             + URLEncoder.encode(token, StandardCharsets.UTF_8);
-    SimpleMailMessage message = new SimpleMailMessage();
-    message.setFrom(senderAddress);
-    message.setTo(user.getEmail());
-    message.setSubject("Reset your InnovaServe password");
-    message.setText(
-        "Use this one-time link to reset your password. It expires in 20 minutes:\n\n"
+    String text = "Use this one-time link to reset your password. It expires in 20 minutes:\n\n"
             + link
-            + "\n\nIf you did not request this, you can ignore this email.");
+            + "\n\nIf you did not request this, you can ignore this email.";
     try {
-      mailSender.send(message);
-    } catch (MailException ex) {
+      emailSender.send(user.getEmail(), "Reset your InnovaServe password", text);
+    } catch (EmailDeliveryException ex) {
       user.clearPasswordReset();
       log.error("Could not send password reset email for user {}", user.getId(), ex);
     }
