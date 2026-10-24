@@ -83,14 +83,19 @@ public class NotificationService {
   }
 
   @Transactional
-  public void syncReadyPickup(UUID tenantId, List<String> readyItems, boolean newlyReady) {
+  public void syncReadyPickup(UUID tenantId, List<String> readyItems, boolean newlyReady,
+      UUID focusOrderId, String serviceStation) {
     String source = "restaurant_order";
-    String key = "order-ready";
+    String key = focusOrderId == null ? "order-ready"
+        : "order-ready:route:" + ("kitchen".equals(serviceStation) ? "restaurant" : "bar") + ":" + focusOrderId;
     // Retire item-level alerts from before grouping so each waiter sees one pickup alert.
-    notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(
-        tenantId, source, "order-ready:").forEach(Notification::dismiss);
-    List<Notification> current = notifications.findAllByTenantIdAndSourceAndSourceKey(
-        tenantId, source, key);
+    List<Notification> all = notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWith(
+        tenantId, source, "order-ready");
+    all.stream().filter(notification -> !"order-ready".equals(notification.getSourceKey())
+        && !notification.getSourceKey().startsWith("order-ready:route:"))
+        .filter(notification -> notification.getDismissedAt() == null).forEach(Notification::dismiss);
+    List<Notification> current = all.stream().filter(notification -> "order-ready".equals(notification.getSourceKey())
+        || notification.getSourceKey().startsWith("order-ready:route:")).toList();
     if (readyItems.isEmpty()) {
       current.stream().filter(notification -> notification.getDismissedAt() == null).forEach(Notification::dismiss);
       return;
@@ -98,7 +103,7 @@ public class NotificationService {
     String title = readyItems.size() == 1 ? "1 item ready for pickup"
         : readyItems.size() + " items ready for pickup";
     String message = "Ready for pickup: " + String.join("; ", readyItems)
-        + ". Deliver each item, then mark it served in Restaurant → Orders or Tables & service.";
+        + ". Deliver each item, then mark it served in its Bar or Restaurant order.";
     Map<UUID, Notification> byRecipient = new HashMap<>();
     current.forEach(notification -> byRecipient.put(notification.getRecipientUserId(), notification));
     if (newlyReady) {
@@ -107,14 +112,14 @@ public class NotificationService {
         if (notification == null) {
           notifications.save(new Notification(tenantId, user.getId(), title, message, "IMPORTANT", source, key));
         } else {
-          notification.reopenReadyItems(title, message);
+          notification.reopenReadyItems(title, message, key);
         }
       }
       byRecipient.values().stream().filter(notification -> notification.getDismissedAt() == null)
           .forEach(Notification::dismiss);
     } else {
       current.stream().filter(notification -> notification.getDismissedAt() == null)
-          .forEach(notification -> notification.updateReadyItems(title, message, false));
+          .forEach(notification -> notification.updateReadyItems(title, message, key, false));
     }
   }
 
@@ -183,15 +188,16 @@ public class NotificationService {
     roles.findAllByTenantIdOrderByName(tenantId).forEach(role -> roleById.put(role.getId(), role));
     List<StaffUser> eligible = users.findAllByTenantIdAndActiveTrue(tenantId).stream()
         .filter(user -> {
-          StaffRole role = roleById.get(user.getRoleId());
-          return role != null && role.getPermissions() != null && role.getPermissions().contains(permission);
+          return com.InnovaServe.core.security.StaffAccess.permissions(
+              com.InnovaServe.core.security.StaffAccess.roles(user, roleById)).contains(permission);
         }).toList();
     List<StaffUser> preferred = eligible.stream()
-        .filter(user -> preferredRole.equalsIgnoreCase(roleById.get(user.getRoleId()).getName())).toList();
+        .filter(user -> com.InnovaServe.core.security.StaffAccess.roles(user, roleById).stream()
+            .anyMatch(role -> preferredRole.equalsIgnoreCase(role.getName()))).toList();
     if (!preferred.isEmpty()) return preferred;
     List<StaffUser> specialists = eligible.stream().filter(user -> {
-      String role = roleById.get(user.getRoleId()).getName().toUpperCase(Locale.ROOT);
-      return !Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER", "TENANT_MANAGER").contains(role);
+      return com.InnovaServe.core.security.StaffAccess.roles(user, roleById).stream().noneMatch(role ->
+          Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER", "TENANT_MANAGER").contains(role.getName().toUpperCase(Locale.ROOT)));
     }).toList();
     return specialists.isEmpty() ? eligible : specialists;
   }
@@ -212,11 +218,10 @@ public class NotificationService {
     Map<UUID, StaffRole> roleById = new HashMap<>();
     roles.findAllByTenantIdOrderByName(tenantId).forEach(role -> roleById.put(role.getId(), role));
     return users.findAllByTenantIdAndActiveTrue(tenantId).stream().filter(user -> {
-      StaffRole role = roleById.get(user.getRoleId());
-      if (role == null) return false;
-      String roleName = role.getName().toUpperCase(Locale.ROOT);
-      return roleName.equals("OWNER") || roleName.equals("HOTEL_ADMIN") || roleName.equals("GENERAL_MANAGER") || roleName.equals("TENANT_MANAGER")
-          || (includeInventoryManagers && role.getPermissions() != null && role.getPermissions().contains("INVENTORY_MANAGE"));
+      var assignedRoles = com.InnovaServe.core.security.StaffAccess.roles(user, roleById);
+      return assignedRoles.stream().anyMatch(role -> Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER", "TENANT_MANAGER")
+          .contains(role.getName().toUpperCase(Locale.ROOT)))
+          || (includeInventoryManagers && com.InnovaServe.core.security.StaffAccess.permissions(assignedRoles).contains("INVENTORY_MANAGE"));
     }).toList();
   }
 

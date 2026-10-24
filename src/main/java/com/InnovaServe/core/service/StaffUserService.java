@@ -29,23 +29,40 @@ public class StaffUserService {
     return users.findAllByTenantIdOrderByName(tenant.tenantId());
   }
 
+  public List<Map<String, Object>> listWithRoles() {
+    Map<UUID, StaffRole> byId = new HashMap<>();
+    roles.findAllByTenantIdOrderByName(tenant.tenantId()).forEach(role -> byId.put(role.getId(), role));
+    return list().stream().map(user -> {
+      Map<String, Object> result = new LinkedHashMap<>();
+      result.put("id", user.getId());
+      result.put("name", user.getName());
+      result.put("phone", user.getPhone());
+      result.put("email", user.getEmail());
+      result.put("active", user.isActive());
+      result.put("role_id", user.getRoleId());
+      result.put("role_ids", user.getRoleIds());
+      result.put("role_names", com.InnovaServe.core.security.StaffAccess.roles(user, byId).stream().map(StaffRole::getName).toList());
+      return result;
+    }).toList();
+  }
+
   public Map<String, Object> currentUser() {
     UUID tenantId = tenant.tenantId();
     StaffUser user =
         users
             .findByTenantIdAndId(tenantId, tenant.userId())
             .orElseThrow(() -> new NoSuchElementException("User not found"));
-    StaffRole role =
-        user.getRoleId() == null
-            ? null
-            : roles.findByTenantIdAndId(tenantId, user.getRoleId()).orElse(null);
+    List<StaffRole> assignedRoles = roles.findAllByTenantIdAndIdIn(tenantId, user.getRoleIds());
     Map<String, Object> response = new LinkedHashMap<>();
     response.put("id", user.getId());
     response.put("name", user.getName());
     response.put("phone", user.getPhone());
     response.put("email", user.getEmail());
     response.put("role_id", user.getRoleId());
-    response.put("role_name", role == null ? "STAFF" : role.getName());
+    response.put("role_ids", user.getRoleIds());
+    response.put("role_names", assignedRoles.stream().map(StaffRole::getName).sorted().toList());
+    response.put("role_name", assignedRoles.stream().filter(role -> role.getId().equals(user.getRoleId()))
+        .map(StaffRole::getName).findFirst().orElse("STAFF"));
     response.put("permissions", org.springframework.security.core.context.SecurityContextHolder
         .getContext().getAuthentication().getAuthorities().stream()
         .map(org.springframework.security.core.GrantedAuthority::getAuthority)
@@ -58,6 +75,12 @@ public class StaffUserService {
   @Transactional
   public StaffUser create(
       String name, String phone, String email, String password, String pin, UUID role) {
+    return createWithRoles(name, phone, email, password, pin, role == null ? List.of() : List.of(role));
+  }
+
+  @Transactional
+  public StaffUser createWithRoles(
+      String name, String phone, String email, String password, String pin, Collection<UUID> selectedRoles) {
     UUID tid = tenant.tenantId();
     AccountValidation.requireMobile(phone);
     if (email != null && !email.isBlank()) AccountValidation.requireEmail(email);
@@ -66,9 +89,10 @@ public class StaffUserService {
       throw new IllegalArgumentException("Staff PIN must contain 4 to 8 digits");
     if (users.existsByTenantIdAndPhone(tid, phone))
       throw new IllegalArgumentException("PhoneAlreadyExists");
-    if (role != null && roles.findByTenantIdAndId(tid, role).isEmpty())
-      throw new NoSuchElementException("Role not found");
-    return users.save(
+    Set<UUID> roleIds = validateRoles(selectedRoles);
+    if (hasElevatedRole(roleIds) && !currentActorIsOwner())
+      throw new IllegalStateException("Owner approval is required before assigning an elevated role");
+    StaffUser user =
         new StaffUser(
             tid,
             name,
@@ -76,19 +100,51 @@ public class StaffUserService {
             email,
             encoder.encode(password),
             pin == null ? null : encoder.encode(pin),
-            role));
+            roleIds.iterator().next());
+    user.setRoleIds(roleIds);
+    return users.save(user);
   }
 
   @Transactional
   public StaffUser update(UUID id, String name, UUID role, Boolean active) {
-    if (role != null && roles.findByTenantIdAndId(tenant.tenantId(), role).isEmpty())
-      throw new NoSuchElementException("Role not found");
+    return updateWithRoles(id, name, role == null ? null : List.of(role), active);
+  }
+
+  @Transactional
+  public StaffUser updateWithRoles(UUID id, String name, Collection<UUID> selectedRoles, Boolean active) {
+    Set<UUID> roleIds = selectedRoles == null ? null : validateRoles(selectedRoles);
     StaffUser u =
         users
             .findByTenantIdAndId(tenant.tenantId(), id)
             .orElseThrow(() -> new NoSuchElementException("User not found"));
-    u.update(name, role, active);
+    if (roleIds != null && hasElevatedRole(roleIds.stream()
+        .filter(roleId -> !u.getRoleIds().contains(roleId)).toList()) && !currentActorIsOwner())
+      throw new IllegalStateException("Owner approval is required before assigning an elevated role");
+    u.update(name, null, active);
+    if (roleIds != null) u.setRoleIds(roleIds);
     return u;
+  }
+
+  private Set<UUID> validateRoles(Collection<UUID> selected) {
+    if (selected == null || selected.isEmpty() || selected.stream().anyMatch(Objects::isNull))
+      throw new IllegalArgumentException("Select at least one valid role");
+    Set<UUID> ids = new LinkedHashSet<>(selected);
+    if (roles.findAllByTenantIdAndIdIn(tenant.tenantId(), ids).size() != ids.size())
+      throw new IllegalArgumentException("Choose roles belonging to this property");
+    return ids;
+  }
+
+  private boolean hasElevatedRole(Collection<UUID> roleIds) {
+    return roles.findAllByTenantIdAndIdIn(tenant.tenantId(), roleIds).stream()
+        .anyMatch(role -> Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER")
+            .contains(role.getName().toUpperCase(Locale.ROOT)));
+  }
+
+  private boolean currentActorIsOwner() {
+    StaffUser actor = users.findByTenantIdAndId(tenant.tenantId(), tenant.userId())
+        .filter(StaffUser::isActive).orElse(null);
+    return actor != null && roles.findAllByTenantIdAndIdIn(tenant.tenantId(), actor.getRoleIds()).stream()
+        .anyMatch(role -> "OWNER".equalsIgnoreCase(role.getName()));
   }
 
   public boolean verifyPin(UUID id, String pin) {

@@ -126,14 +126,16 @@ public class RestaurantService {
       UUID tax,
       String station,
       boolean veg,
-      String foodType) {
+      String foodType,
+      Integer servingSizeMl) {
     categories
         .findByTenantIdAndId(tenant.tenantId(), cat)
         .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
     String normalizedCode = normalizeItemCode(itemCode);
     ensureItemCodeAvailable(normalizedCode, null);
     stations.requireActive(station);
-    return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg, foodType));
+    billing.requireRestaurantTaxRule(tax);
+    return items.save(new MenuItem(tenant.tenantId(), cat, name, normalizedCode, price, tax, station, veg, foodType, servingSizeMl));
   }
 
   @Transactional
@@ -148,6 +150,8 @@ public class RestaurantService {
       String station,
       Boolean vegFlag,
       String foodType,
+      Integer servingSizeMl,
+      Boolean clearServingSize,
       Boolean active) {
     MenuItem item =
         items
@@ -164,7 +168,9 @@ public class RestaurantService {
     }
     if (station != null && !station.equals(item.getStation())) stations.requireActive(station);
     if (Boolean.TRUE.equals(active) && !item.isActive()) stations.requireActive(station == null ? item.getStation() : station);
-    item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, foodType, active);
+    if (!Boolean.TRUE.equals(clearTaxRule) && taxRuleId != null) billing.requireRestaurantTaxRule(taxRuleId);
+    item.update(categoryId, name, itemCode, price, taxRuleId, clearTaxRule, station, vegFlag, foodType,
+        servingSizeMl, clearServingSize, active);
     return item;
   }
 
@@ -393,7 +399,7 @@ public class RestaurantService {
           .collect(java.util.stream.Collectors.toSet());
       Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
           : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
-              .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+              .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getDisplayName));
       Map<UUID, List<Map<String, Object>>> itemsByOrder = new HashMap<>();
       for (OrderItem item : visibleItems) {
         itemsByOrder.computeIfAbsent(item.getOrderId(), ignored -> new ArrayList<>())
@@ -431,7 +437,7 @@ public class RestaurantService {
         .collect(java.util.stream.Collectors.toSet());
     Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
         : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
-            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getDisplayName));
     List<Map<String, Object>> completedItems =
         servedItems.stream()
             .filter(item -> item.getPlacedAt() != null && item.getPreparingAt() != null)
@@ -591,7 +597,7 @@ public class RestaurantService {
 
   private Map<String, Object> kitchenItem(OrderItem orderItem) {
     String name = items.findByTenantIdAndId(tenant.tenantId(), orderItem.getMenuItemId())
-        .map(MenuItem::getName).orElse("Unavailable menu item");
+        .map(MenuItem::getDisplayName).orElse("Unavailable menu item");
     return kitchenItem(orderItem, name);
   }
 
@@ -636,7 +642,7 @@ public class RestaurantService {
         .collect(java.util.stream.Collectors.toSet());
     Map<UUID, String> menuNames = menuItemIds.isEmpty() ? Map.of()
         : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuItemIds).stream()
-            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getDisplayName));
     Map<UUID, List<OrderItem>> itemsByBatch = new HashMap<>();
     for (OrderItem item : pendingBatchItems)
       itemsByBatch.computeIfAbsent(item.getKotBatchId(), ignored -> new ArrayList<>()).add(item);
@@ -685,7 +691,7 @@ public class RestaurantService {
             .collect(java.util.stream.Collectors.toMap(RestaurantOrder::getId, order -> order));
     Map<UUID, String> names = menuIds.isEmpty() ? Map.of()
         : items.findAllByTenantIdAndIdIn(tenant.tenantId(), menuIds).stream()
-            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getName));
+            .collect(java.util.stream.Collectors.toMap(MenuItem::getId, MenuItem::getDisplayName));
     Set<UUID> tableIds = new HashSet<>();
     readyOrders.values().stream().map(RestaurantOrder::getTableId).filter(Objects::nonNull)
         .forEach(tableIds::add);
@@ -704,7 +710,11 @@ public class RestaurantService {
             + " · Order " + item.getOrderId().toString().substring(0, 8).toUpperCase(Locale.ROOT)
             + ": " + item.getQuantity() + " × " + names.getOrDefault(item.getMenuItemId(), "Order item"))
         .toList();
-    notifications.syncReadyPickup(tenant.tenantId(), details, newlyReady);
+    OrderItem focusItem = readyItems.isEmpty() ? null : readyItems.get(readyItems.size() - 1);
+    RestaurantOrder focusOrder = focusItem == null ? null : readyOrders.get(focusItem.getOrderId());
+    notifications.syncReadyPickup(tenant.tenantId(), details, newlyReady,
+        focusOrder == null ? null : focusOrder.getId(),
+        focusOrder == null ? null : focusOrder.getServiceStation());
   }
 
   private String orderLocation(RestaurantOrder order) {
@@ -796,7 +806,7 @@ public class RestaurantService {
           items.findByTenantIdAndId(tenant.tenantId(), oi.getMenuItemId()).orElseThrow();
       lines.add(
           new BillingService.LineInput(
-              menu.getName(),
+              menu.getDisplayName(),
               BigDecimal.valueOf(oi.getQuantity()),
               menu.getPrice(),
               menu.getTaxRuleId()));

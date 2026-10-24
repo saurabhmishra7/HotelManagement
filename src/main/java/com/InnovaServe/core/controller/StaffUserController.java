@@ -2,6 +2,7 @@ package com.InnovaServe.core.controller;
 
 import com.InnovaServe.core.entity.StaffUser;
 import com.InnovaServe.core.service.StaffUserService;
+import com.InnovaServe.core.service.StaffApprovalService;
 import com.InnovaServe.core.service.PasswordResetService;
 import com.InnovaServe.core.service.EmailVerificationService;
 import com.InnovaServe.core.service.TokenService;
@@ -15,14 +16,16 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1")
 public class StaffUserController {
   private final StaffUserService service;
+  private final StaffApprovalService approvals;
   private final TokenService tokens;
   private final PasswordResetService passwordResets;
   private final EmailVerificationService emailVerifications;
 
   public StaffUserController(
-      StaffUserService s, TokenService tokens, PasswordResetService passwordResets,
+      StaffUserService s, StaffApprovalService approvals, TokenService tokens, PasswordResetService passwordResets,
       EmailVerificationService emailVerifications) {
     service = s;
+    this.approvals = approvals;
     this.tokens = tokens;
     this.passwordResets = passwordResets;
     this.emailVerifications = emailVerifications;
@@ -61,22 +64,25 @@ public class StaffUserController {
   }
 
   @GetMapping("/users")
-  @PreAuthorize("hasAuthority('PERM_STAFF_READ')")
-  public List<StaffUser> users() {
-    return service.list();
+  @PreAuthorize("hasAnyAuthority('PERM_STAFF_READ', 'PERM_STAFF_MANAGE')")
+  public List<Map<String, Object>> users() {
+    return service.listWithRoles();
   }
 
   @PostMapping("/create/user")
   @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public Map<String, Object> create(@RequestBody CreateUser r) {
-    StaffUser u = service.create(r.name(), r.phone(), r.email(), r.password(), r.pin(), r.roleId());
-    return user(u);
+  public ResponseEntity<Map<String, Object>> create(@RequestBody CreateUser r) {
+    Map<String, Object> result = approvals.create(r.name(), r.phone(), r.email(), r.password(), r.pin(),
+        r.roleIds() != null ? r.roleIds() : r.roleId() == null ? List.of() : List.of(r.roleId()));
+    return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
   }
 
   @PatchMapping("/user/{id}")
   @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public Map<String, Object> update(@PathVariable UUID id, @RequestBody UpdateUser r) {
-    return user(service.update(id, r.name(), r.roleId(), r.active()));
+  public ResponseEntity<Map<String, Object>> update(@PathVariable UUID id, @RequestBody UpdateUser r) {
+    Map<String, Object> result = approvals.update(id, r.name(),
+        r.roleIds() != null ? r.roleIds() : r.roleId() == null ? null : List.of(r.roleId()), r.active());
+    return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
   }
 
   @PostMapping("/user/{id}/verify-pin")
@@ -92,6 +98,7 @@ public class StaffUserController {
     m.put("phone", u.getPhone());
     m.put("email", u.getEmail());
     m.put("role_id", u.getRoleId());
+    m.put("role_ids", u.getRoleIds());
     m.put("active", u.isActive());
     return m;
   }
@@ -118,9 +125,10 @@ public class StaffUserController {
       String email,
       String password,
       @JsonProperty("role_id") UUID roleId,
-      String pin) {}
+      String pin, @JsonProperty("role_ids") List<UUID> roleIds) {}
 
-  public record UpdateUser(String name, @JsonProperty("role_id") UUID roleId, Boolean active) {}
+  public record UpdateUser(String name, @JsonProperty("role_id") UUID roleId, Boolean active,
+      @JsonProperty("role_ids") List<UUID> roleIds) {}
 
   public record PinRequest(String pin) {}
 }

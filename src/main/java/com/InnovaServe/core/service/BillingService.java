@@ -63,16 +63,30 @@ public class BillingService {
 
   @Transactional
   public TaxRule addTax(
-      String name, String applies, BigDecimal rate, boolean itc, LocalDate effective) {
+      String name, String applies, String category, BigDecimal rate, boolean itc, LocalDate effective) {
     if (!Set.of("room", "restaurant", "other").contains(applies))
       throw new IllegalArgumentException("Invalid tax category");
     if (name == null || name.isBlank() || name.length() > 100)
       throw new IllegalArgumentException("Tax rule name is required and must be at most 100 characters");
+    if (category != null && (category.isBlank() || category.trim().length() > 60))
+      throw new IllegalArgumentException("Applies to must contain 1 to 60 characters");
     if (rate == null || rate.signum() < 0 || rate.compareTo(new BigDecimal("100")) > 0)
       throw new IllegalArgumentException("Tax rate must be between 0 and 100");
     if (effective == null) throw new IllegalArgumentException("Effective start date is required");
     requireTaxModule(applies);
-    return taxes.save(new TaxRule(tenant.tenantId(), name, applies, rate, itc, effective));
+    return taxes.save(new TaxRule(tenant.tenantId(), name.trim(), applies, category, rate, itc, effective));
+  }
+
+  public void requireRestaurantTaxRule(UUID taxRuleId) {
+    if (taxRuleId == null) return;
+    TaxRule rule = taxes.findByTenantIdAndId(tenant.tenantId(), taxRuleId)
+        .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
+    if (!"restaurant".equals(rule.getAppliesTo()))
+      throw new IllegalArgumentException("Choose a restaurant tax rule for this menu item");
+    LocalDate today = LocalDate.now();
+    if (rule.getEffectiveFrom().isAfter(today)
+        || (rule.getEffectiveTo() != null && rule.getEffectiveTo().isBefore(today)))
+      throw new IllegalArgumentException("Choose a currently effective restaurant tax rule");
   }
 
   @Transactional
@@ -193,6 +207,8 @@ public class BillingService {
         if (tr.getEffectiveFrom().isAfter(now)
             || (tr.getEffectiveTo() != null && tr.getEffectiveTo().isBefore(now)))
           throw new IllegalArgumentException("Tax rule is not effective");
+        if ("restaurant".equals(request.sourceModule()) && !"restaurant".equals(tr.getAppliesTo()))
+          throw new IllegalArgumentException("Restaurant invoices require a restaurant tax rule");
         rate = tr.getRatePercent();
       }
       BigDecimal tx = base.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);

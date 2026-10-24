@@ -13,5 +13,6 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
   void deleteAllByTenantIdAndRecipientUserIdAndDismissedAtIsNull(UUID tenantId, UUID userId);
   List<Notification> findAllByTenantIdAndSourceAndSourceKeyAndDismissedAtIsNull(UUID tenantId, String source, String sourceKey);
   List<Notification> findAllByTenantIdAndSourceAndSourceKey(UUID tenantId, String source, String sourceKey);
+  List<Notification> findAllByTenantIdAndSourceAndSourceKeyStartingWith(UUID tenantId, String source, String sourceKeyPrefix);
   List<Notification> findAllByTenantIdAndSourceAndSourceKeyStartingWithAndDismissedAtIsNull(UUID tenantId, String source, String sourceKeyPrefix);
 }

@@ -14,6 +14,9 @@ public class TaxRule extends TenantEntity {
   @Column(name = "applies_to", nullable = false, length = 20)
   private String appliesTo;
 
+  @Column(name = "tax_category", nullable = false, length = 60)
+  private String taxCategory;
+
   @Column(name = "rate_percent", nullable = false, precision = 5, scale = 2)
   private BigDecimal ratePercent;
 
@@ -30,9 +33,19 @@ public class TaxRule extends TenantEntity {
 
   public TaxRule(
       UUID t, String name, String applies, BigDecimal rate, boolean itc, LocalDate from) {
+    this(t, name, applies, null, rate, itc, from);
+  }
+
+  public TaxRule(
+      UUID t, String name, String applies, String category, BigDecimal rate, boolean itc, LocalDate from) {
     super(t);
     this.name = name;
     appliesTo = applies;
+    taxCategory = category == null || category.isBlank() ? switch (applies) {
+      case "room" -> "Room stay";
+      case "restaurant" -> "Restaurant food and drinks";
+      default -> "Other";
+    } : category.trim();
     ratePercent = rate;
     itcEligible = itc;
     effectiveFrom = from;
@@ -53,6 +66,8 @@ public class TaxRule extends TenantEntity {
   public String getAppliesTo() {
     return appliesTo;
   }
+
+  public String getTaxCategory() { return taxCategory; }
 
   public LocalDate getEffectiveFrom() {
     return effectiveFrom;

@@ -123,13 +123,8 @@ class BearerTokenFilter extends OncePerRequestFilter {
           return;
         }
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-        StaffRole role =
-            user.getRoleId() == null
-                ? null
-                : roles.findByTenantIdAndId(tenantId, user.getRoleId()).orElse(null);
-        if (role != null) {
-          Collection<?> permissions = role.getPermissions() == null ? List.of() : role.getPermissions();
-          for (Object permission : permissions) {
+        var assignedRoles = roles.findAllByTenantIdAndIdIn(tenantId, user.getRoleIds());
+        for (String permission : com.InnovaServe.core.security.StaffAccess.permissions(assignedRoles)) {
             try {
               authorities.add(
                   new SimpleGrantedAuthority(
@@ -137,12 +132,6 @@ class BearerTokenFilter extends OncePerRequestFilter {
             } catch (IllegalArgumentException ignored) {
               // Unknown permissions in an older token are ignored.
             }
-          }
-          if ("OWNER".equals(role.getName()) || "HOTEL_ADMIN".equals(role.getName())) {
-            RoleType.valueOf(role.getName()).defaultPermissions().stream()
-                .map(permission -> new SimpleGrantedAuthority("PERM_" + permission.name()))
-                .forEach(authorities::add);
-          }
         }
         var auth = new UsernamePasswordAuthenticationToken(claims, null, authorities);
         org.springframework.security.core.context.SecurityContextHolder.getContext()

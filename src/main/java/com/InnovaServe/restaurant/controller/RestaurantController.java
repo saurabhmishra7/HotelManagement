@@ -90,7 +90,8 @@ public class RestaurantController {
         r.taxRuleId(),
         r.station(),
         r.vegFlag() == null || r.vegFlag(),
-        r.foodType());
+        r.foodType(),
+        r.servingSizeMl());
   }
 
   @PatchMapping("/menu-items/{id}")
@@ -107,6 +108,8 @@ public class RestaurantController {
         r.station(),
         r.vegFlag(),
         r.foodType(),
+        r.servingSizeMl(),
+        r.clearServingSize(),
         r.active());
   }
 
@@ -279,7 +282,8 @@ public class RestaurantController {
       @JsonProperty("tax_rule_id") UUID taxRuleId,
       String station,
       @JsonProperty("veg_flag") Boolean vegFlag,
-      @JsonProperty("food_type") String foodType) {}
+      @JsonProperty("food_type") String foodType,
+      @JsonProperty("serving_size_ml") Integer servingSizeMl) {}
 
   public record MenuItemUpdate(
       @JsonProperty("category_id") UUID categoryId,
@@ -291,6 +295,8 @@ public class RestaurantController {
       String station,
       @JsonProperty("veg_flag") Boolean vegFlag,
       @JsonProperty("food_type") String foodType,
+      @JsonProperty("serving_size_ml") Integer servingSizeMl,
+      @JsonProperty("clear_serving_size") Boolean clearServingSize,
       Boolean active) {}
 
   public record OpenOrder(

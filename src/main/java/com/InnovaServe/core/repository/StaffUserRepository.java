@@ -21,7 +21,7 @@ public interface StaffUserRepository extends JpaRepository<StaffUser, UUID> {
   Optional<StaffUser> findByEmailVerificationTokenHashAndActiveTrue(String tokenHash);
 
   @Query("select case when count(u) > 0 then true else false end from StaffUser u, StaffRole r "
-      + "where u.roleId = r.id and lower(u.email) = lower(:email) "
+      + "where (u.roleId = r.id or r.id member of u.assignedRoleIds) and u.tenantId = r.tenantId and lower(u.email) = lower(:email) "
       + "and upper(r.name) in ('OWNER', 'HOTEL_ADMIN')")
   boolean existsOwnerEmailIgnoreCase(@Param("email") String email);
 

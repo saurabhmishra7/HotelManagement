@@ -33,6 +33,9 @@ public class MenuItem extends TenantEntity {
   @Column(name = "food_type", nullable = false, length = 10)
   private String foodType = "VEG";
 
+  @Column(name = "serving_size_ml")
+  private Integer servingSizeMl;
+
   @Column(nullable = false)
   private boolean active = true;
 
@@ -40,6 +43,12 @@ public class MenuItem extends TenantEntity {
 
   public MenuItem(
       UUID t, UUID cat, String name, String itemCode, BigDecimal price, UUID tax, String station, boolean veg, String foodType) {
+    this(t, cat, name, itemCode, price, tax, station, veg, foodType, null);
+  }
+
+  public MenuItem(
+      UUID t, UUID cat, String name, String itemCode, BigDecimal price, UUID tax, String station, boolean veg, String foodType,
+      Integer servingSizeMl) {
     super(t);
     categoryId = cat;
     this.name = name;
@@ -48,6 +57,7 @@ public class MenuItem extends TenantEntity {
     taxRuleId = tax;
     this.station = station;
     setFoodType(foodType == null ? (veg ? "VEG" : "NON_VEG") : foodType);
+    setServingSizeMl(servingSizeMl);
   }
 
   public UUID getCategoryId() {
@@ -82,6 +92,19 @@ public class MenuItem extends TenantEntity {
     return foodType;
   }
 
+  public Integer getServingSizeMl() { return servingSizeMl; }
+
+  @Transient
+  public String getDisplayName() {
+    return servingSizeMl == null ? name : name + " · " + servingSizeMl + " ml";
+  }
+
+  private void setServingSizeMl(Integer value) {
+    if (value != null && (value < 1 || value > 10000))
+      throw new IllegalArgumentException("Serving size must be between 1 and 10000 ml");
+    servingSizeMl = value;
+  }
+
   private void setFoodType(String value) {
     String normalized = value.trim().toUpperCase(Locale.ROOT);
     if (!normalized.equals("VEG") && !normalized.equals("NON_VEG") && !normalized.equals("EGG") && !normalized.equals("NONE")) {
@@ -105,6 +128,8 @@ public class MenuItem extends TenantEntity {
       String station,
       Boolean vegFlag,
       String foodType,
+      Integer servingSizeMl,
+      Boolean clearServingSize,
       Boolean active) {
     if (categoryId != null) this.categoryId = categoryId;
     if (name != null) this.name = name;
@@ -115,6 +140,8 @@ public class MenuItem extends TenantEntity {
     if (station != null) this.station = station;
     if (foodType != null) setFoodType(foodType);
     else if (vegFlag != null) setFoodType(vegFlag ? "VEG" : "NON_VEG");
+    if (Boolean.TRUE.equals(clearServingSize)) this.servingSizeMl = null;
+    else if (servingSizeMl != null) setServingSizeMl(servingSizeMl);
     if (active != null) this.active = active;
   }
 }

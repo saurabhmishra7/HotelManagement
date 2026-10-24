@@ -28,13 +28,8 @@ public class ApprovalService {
             .orElseThrow(() -> new NoSuchElementException("User not found"));
     if (!user.isActive() || user.getPinHash() == null || !encoder.matches(pin, user.getPinHash()))
       throw new IllegalArgumentException("Invalid approval PIN");
-    if (user.getRoleId() == null) throw new SecurityException("Approval permission denied");
-    var role =
-        roles
-            .findByTenantIdAndId(tid, user.getRoleId())
-            .orElseThrow(() -> new SecurityException("Approval permission denied"));
-    if (role.getPermissions() == null
-        || (!role.getPermissions().contains(permission) && !role.getPermissions().contains("*")))
+    var assignedRoles = roles.findAllByTenantIdAndIdIn(tid, user.getRoleIds());
+    if (!com.InnovaServe.core.security.StaffAccess.permissions(assignedRoles).contains(permission))
       throw new SecurityException("Approval permission denied");
   }
 }

@@ -59,6 +59,7 @@ public class BillingController {
     return service.addTax(
         r.name(),
         r.appliesTo(),
+        r.taxCategory(),
         r.ratePercent(),
         Boolean.TRUE.equals(r.itcEligible()),
         r.effectiveFrom());
@@ -169,6 +170,7 @@ public class BillingController {
   public record TaxRequest(
       String name,
       @JsonProperty("applies_to") String appliesTo,
+      @JsonProperty("tax_category") String taxCategory,
       @JsonProperty("rate_percent") BigDecimal ratePercent,
       @JsonProperty("itc_eligible") Boolean itcEligible,
       @JsonProperty("effective_from") LocalDate effectiveFrom) {}

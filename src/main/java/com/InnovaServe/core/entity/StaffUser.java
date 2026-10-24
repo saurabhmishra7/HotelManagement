@@ -3,7 +3,7 @@ package com.InnovaServe.core.entity;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.time.Instant;
-import java.util.UUID;
+import java.util.*;
 
 @Entity
 @Table(
@@ -57,6 +57,12 @@ public class StaffUser {
   @Column(name = "role_id")
   private UUID roleId;
 
+  @ElementCollection(fetch = FetchType.EAGER)
+  @CollectionTable(name = "user_role", schema = "core", joinColumns = @JoinColumn(name = "user_id"))
+  @Column(name = "role_id", nullable = false)
+  @org.hibernate.annotations.Fetch(org.hibernate.annotations.FetchMode.SUBSELECT)
+  private Set<UUID> assignedRoleIds = new LinkedHashSet<>();
+
   @Column(nullable = false)
   private boolean active = true;
 
@@ -80,6 +86,7 @@ public class StaffUser {
     this.passwordHash = passwordHash;
     this.pinHash = pinHash;
     this.roleId = roleId;
+    if (roleId != null) assignedRoleIds.add(roleId);
   }
 
   public UUID getId() {
@@ -104,6 +111,19 @@ public class StaffUser {
 
   public UUID getRoleId() {
     return roleId;
+  }
+
+  public Set<UUID> getRoleIds() {
+    Set<UUID> result = new LinkedHashSet<>();
+    if (roleId != null) result.add(roleId);
+    result.addAll(assignedRoleIds);
+    return result;
+  }
+
+  public void setRoleIds(Collection<UUID> ids) {
+    assignedRoleIds.clear();
+    assignedRoleIds.addAll(ids);
+    roleId = assignedRoleIds.stream().findFirst().orElse(null);
   }
 
   public boolean isActive() {
@@ -175,7 +195,7 @@ public class StaffUser {
 
   public void update(String name, UUID roleId, Boolean active) {
     if (name != null) this.name = name;
-    if (roleId != null) this.roleId = roleId;
+    if (roleId != null) setRoleIds(List.of(roleId));
     if (active != null) this.active = active;
   }
 }

@@ -25,7 +25,7 @@ public class StaffRoleController {
   }
 
   @GetMapping("/summary")
-  @PreAuthorize("hasAnyAuthority('PERM_ROLE_READ', 'PERM_ROLE_MANAGE')")
+  @PreAuthorize("hasAnyAuthority('PERM_ROLE_READ', 'PERM_ROLE_MANAGE', 'PERM_STAFF_MANAGE')")
   public List<RoleSummary> listSummaries() {
     return service.list().stream()
         .map(role -> new RoleSummary(role.getId(), role.getName()))

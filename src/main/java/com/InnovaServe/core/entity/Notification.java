@@ -48,17 +48,18 @@ public class Notification {
   public Instant getReadAt() { return readAt; }
   public Instant getDismissedAt() { return dismissedAt; }
   public void markRead() { if (readAt == null) readAt = Instant.now(); }
-  public void updateReadyItems(String title, String message, boolean newlyReady) {
+  public void updateReadyItems(String title, String message, String sourceKey, boolean newlyReady) {
     this.title = title;
     this.message = message;
+    this.sourceKey = sourceKey;
     if (newlyReady) {
       readAt = null;
       updatedAt = Instant.now();
     }
   }
-  public void reopenReadyItems(String title, String message) {
+  public void reopenReadyItems(String title, String message, String sourceKey) {
     dismissedAt = null;
-    updateReadyItems(title, message, true);
+    updateReadyItems(title, message, sourceKey, true);
   }
   public void dismiss() { dismissedAt = Instant.now(); markRead(); }
 }

@@ -108,7 +108,7 @@ public class GuestOrderingService {
                     Map.<String, Object>of(
                         "id", item.getId(),
                         "category_id", item.getCategoryId(),
-                        "name", item.getName(),
+                        "name", item.getDisplayName(),
                         "price", item.getPrice(),
                         "station", item.getStation(),
                         "veg_flag", item.isVegFlag(),

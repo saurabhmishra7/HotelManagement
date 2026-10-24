@@ -105,10 +105,13 @@ public class RestaurantBillBreakdownService {
       if (menuItem.getTaxRuleId() != null) {
         TaxRule taxRule = java.util.Optional.ofNullable(taxRulesById.get(menuItem.getTaxRuleId()))
             .orElseThrow(() -> new NoSuchElementException("Tax rule not found"));
-        if (!taxRule.getEffectiveFrom().isAfter(today)
-            && (taxRule.getEffectiveTo() == null || !taxRule.getEffectiveTo().isBefore(today))) {
-          rate = taxRule.getRatePercent();
-        }
+        if (!"restaurant".equals(taxRule.getAppliesTo()))
+          throw new IllegalArgumentException("Menu item has a tax rule outside the restaurant billing area");
+        if (taxRule.getEffectiveFrom().isAfter(today)
+            || (taxRule.getEffectiveTo() != null && taxRule.getEffectiveTo().isBefore(today)))
+          throw new IllegalStateException("Tax rule for " + menuItem.getDisplayName()
+              + " is not effective. Assign a current rule before billing.");
+        rate = taxRule.getRatePercent();
       }
 
       BigDecimal tax = base.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
@@ -117,7 +120,7 @@ public class RestaurantBillBreakdownService {
       taxTotal = taxTotal.add(tax);
       Map<String, Object> line = new LinkedHashMap<>();
       line.put("order_item_id", orderItem.getId());
-      line.put("description", menuItem.getName());
+      line.put("description", menuItem.getDisplayName());
       line.put("quantity", quantity);
       line.put("unitPrice", unitPrice);
       line.put("taxAmount", tax);
