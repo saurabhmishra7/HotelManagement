@@ -2,6 +2,8 @@ HELP.md
 /docs/
 /AGENTS.md
 /src/main/resources/application.properties
+/src/main/resources/application-dev.properties
+/src/main/resources/application-local.properties
 target/
 var/expense-receipts/
 .mvn/wrapper/maven-wrapper.jar

@@ -1,23 +1,22 @@
-name: Build, Test & Deploy
+name: Backend CI and Catalyst release
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
-    branches: [main, develop]
+    branches: [develop, main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: backend-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
     services:
       postgres:
         image: postgres:16
@@ -28,82 +27,146 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U postgres -d innova_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-
-      - name: Make mvnw executable
-        run: chmod +x mvnw
-
+      - name: Ensure deployment configuration contains no local credentials
+        shell: bash
+        run: |
+          for required in \
+            'app.jwt.secret=${CATALYST_APP_JWT_SECRET}' \
+            'app.tenant-provisioning-key=${CATALYST_TENANT_PROVISIONING_KEY}' \
+            'spring.datasource.url=${CATALYST_DB_URL}' \
+            'spring.datasource.username=${CATALYST_DB_USERNAME}' \
+            'spring.datasource.password=${CATALYST_DB_PASSWORD}'; do
+            if ! grep -Fqx "$required" src/main/resources/application.properties; then
+              echo "Application configuration must use environment placeholders before packaging."
+              exit 1
+            fi
+          done
+          for key in app.platform.jwt-secret app.platform.bootstrap.password app.mail.resend-api-key; do
+            value="$(sed -n "s/^${key}=//p" src/main/resources/application.properties | head -n 1)"
+            if [ -n "$value" ] && [[ "$value" != *'${'* ]]; then
+              echo "A sensitive application setting is not environment-backed: $key"
+              exit 1
+            fi
+          done
+          if grep -Fqx 'app.platform.bootstrap.enabled=true' src/main/resources/application.properties; then
+            echo 'Platform bootstrap must not be enabled by default in the packaged application.'
+            exit 1
+          fi
       - name: Build and run tests
         env:
           CATALYST_DB_URL: jdbc:postgresql://localhost:5432/innova_test
           CATALYST_DB_USERNAME: postgres
           CATALYST_DB_PASSWORD: test
-          CATALYST_APP_JWT_SECRET: ci-test-jwt-secret-not-real
+          CATALYST_APP_JWT_SECRET: ci-test-jwt-secret-at-least-32-characters
           CATALYST_TENANT_PROVISIONING_KEY: ci-test-key-not-real
-        run: ./mvnw -B package
-
-      - name: Prepare jar
+        run: |
+          chmod +x mvnw
+          ./mvnw -B package
+      - name: Prepare deployment artifact
+        if: success() && github.event_name != 'pull_request'
+        shell: bash
         run: |
           mkdir -p dist
-          cp target/*.jar dist/app.jar
-
+          jars=(target/*.jar)
+          if [ "${#jars[@]}" -ne 1 ]; then
+            echo "Expected exactly one deployable JAR."
+            exit 1
+          fi
+          cp "${jars[0]}" dist/app.jar
+          shasum -a 256 dist/app.jar > dist/app.jar.sha256
       - uses: actions/upload-artifact@v4
+        if: success() && github.event_name != 'pull_request'
         with:
-          name: innova-serve-jar
-          path: dist/app.jar
-
+          name: backend-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-report
+          name: test-report-${{ github.run_id }}
           path: target/surefire-reports/
+          if-no-files-found: ignore
           retention-days: 14
 
-  deploy-to-catalyst:
+  deploy-test:
     needs: build-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-
+    environment: test
+    concurrency:
+      group: catalyst-test
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4   # needed: catalyst.json must be present
-
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: innova-serve-jar
+          name: backend-${{ github.sha }}
           path: dist/
-
+      - name: Check Catalyst configuration
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+          CATALYST_PROJECT_ID: ${{ vars.CATALYST_PROJECT_ID }}
+          CATALYST_APP_NAME: ${{ vars.CATALYST_APP_NAME }}
+          CATALYST_DC: ${{ vars.CATALYST_DC }}
+        shell: bash
+        run: |
+          for key in CATALYST_TOKEN CATALYST_PROJECT_ID CATALYST_APP_NAME CATALYST_DC; do
+            if [ -z "${!key}" ]; then
+              echo "Missing test environment configuration: $key"
+              exit 1
+            fi
+          done
+          shasum -a 256 -c dist/app.jar.sha256
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install Zoho Catalyst CLI
-        run: npm install -g zcatalyst-cli@beta
-
-      - name: Deploy to Zoho Catalyst
+      - name: Install Catalyst CLI
+        run: npm install -g zcatalyst-cli@1.27.2
+      - name: Deploy to Catalyst Development (test)
         env:
           CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
-          CATALYST_PROJECT_NAME: ${{ secrets.CATALYST_PROJECT_NAME }}
-          CATALYST_APP_NAME: ${{ secrets.CATALYST_APP_NAME }}
+          CATALYST_PROJECT_ID: ${{ vars.CATALYST_PROJECT_ID }}
+          CATALYST_APP_NAME: ${{ vars.CATALYST_APP_NAME }}
+          CATALYST_DC: ${{ vars.CATALYST_DC }}
         run: |
           catalyst deploy appsail \
             --name "$CATALYST_APP_NAME" \
-            --build-path "dist/app.jar" \
+            --build-path dist \
             --stack java21 \
             --platform javase \
-            --command "sh -c 'java -jar app.jar'" \
-            --project "$CATALYST_PROJECT_NAME" \
-            --token "$CATALYST_TOKEN" \
-            --verbose
+            --command 'sh -c "java -jar app.jar --server.port=${X_ZOHO_CATALYST_LISTEN_PORT:-9000}"' \
+            --project "$CATALYST_PROJECT_ID" \
+            --dc "$CATALYST_DC" \
+            --token "$CATALYST_TOKEN"
+
+  production-ready:
+    needs: deploy-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record production handoff
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo '## Ready for Catalyst production promotion'
+            echo
+            echo "Commit: \`$COMMIT_SHA\`"
+            echo
+            echo 'The tested JAR is deployed to Catalyst Development. AppSail CLI deployment does **not** publish to Catalyst Production.'
+            echo 'Promote the release in Catalyst Console → Settings → Environments → Deployments.'
+            echo 'Check the production AppSail URL and database migration after promotion.'
+          } >> "$GITHUB_STEP_SUMMARY"
