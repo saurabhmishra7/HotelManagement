@@ -41,6 +41,10 @@ public class StaffUserService {
       result.put("active", user.isActive());
       result.put("role_id", user.getRoleId());
       result.put("role_ids", user.getRoleIds());
+      var assigned = com.InnovaServe.core.security.StaffAccess.roles(user, byId);
+      result.put("printer_access", com.InnovaServe.core.security.StaffAccess.permissions(assigned).contains("PRINTER_OPERATOR"));
+      result.put("printer_access_inherited", com.InnovaServe.core.security.StaffAccess.permissions(
+          assigned.stream().filter(r -> !"PRINTER_OPERATOR".equals(r.getName())).toList()).contains("PRINTER_OPERATOR"));
       result.put("role_names", com.InnovaServe.core.security.StaffAccess.roles(user, byId).stream().map(StaffRole::getName).toList());
       return result;
     }).toList();
@@ -132,6 +136,24 @@ public class StaffUserService {
     if (roles.findAllByTenantIdAndIdIn(tenant.tenantId(), ids).size() != ids.size())
       throw new IllegalArgumentException("Choose roles belonging to this property");
     return ids;
+  }
+
+  @Transactional
+  public void printerAccess(UUID id, boolean enabled) {
+    var actor = users.findByTenantIdAndId(tenant.tenantId(), tenant.userId()).orElseThrow();
+    boolean manager = roles.findAllByTenantIdAndIdIn(tenant.tenantId(), actor.getRoleIds()).stream()
+        .anyMatch(r -> Set.of("OWNER","HOTEL_ADMIN","GENERAL_MANAGER","RESTAURANT_MANAGER").contains(r.getName()));
+    if (!manager) throw new org.springframework.security.access.AccessDeniedException("Only an Owner or manager can assign printer access");
+    var user = users.findByTenantIdAndId(tenant.tenantId(), id).orElseThrow(() -> new NoSuchElementException("Staff member not found"));
+    var preset = roles.findAllByTenantIdOrderByName(tenant.tenantId()).stream()
+        .filter(r -> "PRINTER_OPERATOR".equals(r.getName())).findFirst()
+        .orElseGet(() -> roles.save(new StaffRole(tenant.tenantId(),"PRINTER_OPERATOR",List.of("PRINTER_OPERATOR"))));
+    var next = new LinkedHashSet<>(user.getRoleIds());
+    if (enabled) next.add(preset.getId()); else next.remove(preset.getId());
+    if (next.isEmpty()) throw new IllegalArgumentException("Assign another role before removing this staff member's only role");
+    if (!enabled && com.InnovaServe.core.security.StaffAccess.permissions(roles.findAllByTenantIdAndIdIn(tenant.tenantId(),next)).contains("PRINTER_OPERATOR"))
+      throw new IllegalArgumentException("Printer access is included in another assigned role; edit that role's permissions");
+    user.setRoleIds(next);
   }
 
   private boolean hasElevatedRole(Collection<UUID> roleIds) {

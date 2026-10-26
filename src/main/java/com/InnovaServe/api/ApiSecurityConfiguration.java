@@ -49,6 +49,9 @@ public class ApiSecurityConfiguration {
         .authorizeHttpRequests(
             a ->
                 a.requestMatchers("/api/v1/auth/login").permitAll()
+                    // These endpoints authenticate a revocable device key (or staff permission) in PrinterService.
+                    .requestMatchers(HttpMethod.GET, "/api/v1/printer-devices/pending-jobs").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/printer-devices/*/jobs/*/status", "/api/v1/printer-devices/*/agent-tested").permitAll()
                     .requestMatchers("/api/v1/auth/password-reset/**")
                     .permitAll()
                     .requestMatchers("/api/v1/guest/**")

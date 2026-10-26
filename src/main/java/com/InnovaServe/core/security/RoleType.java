@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import java.util.*;
 
 public enum RoleType {
+  PRINTER_OPERATOR,
   OWNER,
   HOTEL_ADMIN,
   GENERAL_MANAGER,
@@ -26,6 +27,7 @@ public enum RoleType {
 
   public Set<Permission> defaultPermissions() {
     return switch (this) {
+      case PRINTER_OPERATOR -> EnumSet.of(Permission.PRINTER_OPERATOR);
       case OWNER, HOTEL_ADMIN -> EnumSet.allOf(Permission.class);
       case GENERAL_MANAGER ->
           EnumSet.complementOf(
@@ -63,6 +65,7 @@ public enum RoleType {
           Permission.ROOM_SERVICE_REQUEST_HANDLE);
       case RESTAURANT_MANAGER ->
           EnumSet.of(
+              Permission.PRINTER_OPERATOR,
               Permission.MENU_READ,
               Permission.MENU_MANAGE,
               Permission.TABLE_READ,

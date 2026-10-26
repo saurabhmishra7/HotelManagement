@@ -22,9 +22,10 @@ class StationOrderFlowTest {
   private final KotBatchRepository batches = mock(KotBatchRepository.class);
   private final RestaurantBillRepository bills = mock(RestaurantBillRepository.class);
   private final RestaurantStationService stations = mock(RestaurantStationService.class);
+  private final org.springframework.context.ApplicationEventPublisher events = mock(org.springframework.context.ApplicationEventPublisher.class);
   private final RestaurantService service = new RestaurantService(
       tenant, null, null, menu, tables, orders, orderItems, batches, bills,
-      null, null, null, null, null, null, null, null, stations);
+      null, null, null, null, events, null, null, null, stations);
 
   private void order(String station) {
     when(tenant.tenantId()).thenReturn(tenantId);
@@ -88,6 +89,8 @@ class StationOrderFlowTest {
     assertTrue(tickets.stream().allMatch(ticket -> ((KotBatch) ticket).getOrderId().equals(orderId)));
     verify(orders, never()).save(any());
     verify(bills, never()).save(any());
+    verify(events).publishEvent(argThat((Object e) -> e instanceof PrintTicketsCreated created
+        && created.orderId().equals(orderId) && created.tickets().size() == 2));
   }
 
   @Test

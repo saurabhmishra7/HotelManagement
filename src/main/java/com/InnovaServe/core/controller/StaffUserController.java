@@ -85,6 +85,13 @@ public class StaffUserController {
     return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
   }
 
+  @PatchMapping("/user/{id}/printer-access")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
+  public Map<String,Boolean> printerAccess(@PathVariable UUID id,@RequestBody Map<String,Boolean> body) {
+    service.printerAccess(id,Boolean.TRUE.equals(body.get("enabled")));
+    return Map.of("saved",true);
+  }
+
   @PostMapping("/user/{id}/verify-pin")
   @PreAuthorize("hasAuthority('PERM_APPROVAL_PIN_VERIFY')")
   public Map<String, Boolean> pin(@PathVariable UUID id, @RequestBody PinRequest r) {

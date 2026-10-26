@@ -565,7 +565,7 @@ public class RestaurantService {
 
   private List<Map<String, Object>> kotPrintTickets(
       List<KotBatch> createdBatches, Map<UUID, List<OrderItem>> itemsByBatch) {
-    return createdBatches.stream().map(batch -> {
+    List<Map<String, Object>> tickets = createdBatches.stream().map(batch -> {
       Map<String, Object> ticket = new LinkedHashMap<>();
       ticket.put("id", batch.getId());
       ticket.put("station", batch.getStation());
@@ -574,6 +574,9 @@ public class RestaurantService {
           .map(this::kitchenItem).toList());
       return ticket;
     }).toList();
+    if (!createdBatches.isEmpty()) events.publishEvent(new PrintTicketsCreated(
+        tenant.tenantId(), createdBatches.getFirst().getOrderId(), tickets));
+    return tickets;
   }
 
   public KotBatch kot(UUID id) {
