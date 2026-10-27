@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import java.util.Locale;
 
 public enum Permission {
+  FINANCIAL_REPORTS_READ,
   PRINTER_OPERATOR,
   TENANT_PROFILE_MANAGE,
   STAFF_READ,

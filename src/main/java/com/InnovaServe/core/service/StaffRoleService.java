@@ -13,10 +13,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class StaffRoleService {
   private final StaffRoleRepository roles;
   private final TenantContext tenant;
+  private final StaffUserService staff;
 
-  public StaffRoleService(StaffRoleRepository roles, TenantContext tenant) {
+  public StaffRoleService(StaffRoleRepository roles, TenantContext tenant, StaffUserService staff) {
     this.roles = roles;
     this.tenant = tenant;
+    this.staff = staff;
   }
 
   public List<StaffRole> list() {
@@ -37,6 +39,8 @@ public class StaffRoleService {
     Set<Permission> allowed = roleType.defaultPermissions();
     Set<Permission> selected =
         requestedPermissions == null ? allowed : Set.copyOf(requestedPermissions);
+    if (selected.contains(Permission.FINANCIAL_REPORTS_READ) && !staff.currentActorIsOwner())
+      throw new org.springframework.security.access.AccessDeniedException("Only the Owner can grant financial reports access");
 
     List<StaffRole> existing =
         roles.findAllByTenantIdAndNameOrderById(tenant.tenantId(), roleType.name());
@@ -56,6 +60,9 @@ public class StaffRoleService {
     StaffRole role =
         roles.findByTenantIdAndId(tenant.tenantId(), roleId)
             .orElseThrow(() -> new NoSuchElementException("Role not found"));
+    boolean hadReports = role.getPermissions() != null && role.getPermissions().contains("FINANCIAL_REPORTS_READ");
+    if (hadReports != requestedPermissions.contains(Permission.FINANCIAL_REPORTS_READ) && !staff.currentActorIsOwner())
+      throw new org.springframework.security.access.AccessDeniedException("Only the Owner can change financial reports access");
     role.setPermissions(requestedPermissions.stream().map(Enum::name).distinct().sorted().toList());
     return role;
   }

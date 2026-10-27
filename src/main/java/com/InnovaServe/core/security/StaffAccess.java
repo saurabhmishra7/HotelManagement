@@ -13,7 +13,10 @@ public final class StaffAccess {
     for (StaffRole role : roles) {
       if (role.getPermissions() != null) result.addAll(role.getPermissions());
       if (Set.of("OWNER", "HOTEL_ADMIN").contains(role.getName().toUpperCase(Locale.ROOT)) || result.contains("*"))
-        Arrays.stream(Permission.values()).map(Enum::name).forEach(result::add);
+        Arrays.stream(Permission.values())
+            .filter(permission -> permission != Permission.FINANCIAL_REPORTS_READ)
+            .map(Enum::name).forEach(result::add);
+      if ("OWNER".equalsIgnoreCase(role.getName())) result.add("FINANCIAL_REPORTS_READ");
     }
     result.remove("*");
     return result;

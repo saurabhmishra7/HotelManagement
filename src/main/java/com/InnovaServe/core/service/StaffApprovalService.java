@@ -30,7 +30,7 @@ public class StaffApprovalService {
   public Map<String, Object> create(String name, String phone, String email, String password,
       String pin, Collection<UUID> selected) {
     List<StaffRole> chosen = requireRoles(selected);
-    if (chosen.stream().noneMatch(role -> ELEVATED.contains(role.getName().toUpperCase(Locale.ROOT)))
+    if (chosen.stream().noneMatch(this::requiresOwnerApproval)
         || isOwner(currentUser()))
       return staffResponse(staff.createWithRoles(name, phone, email, password, pin, selected));
     AccountValidation.requireMobile(phone);
@@ -54,7 +54,7 @@ public class StaffApprovalService {
     List<StaffRole> chosen = requireRoles(selected);
     StaffUser target = users.findByTenantIdAndId(tenant.tenantId(), id)
         .orElseThrow(() -> new NoSuchElementException("User not found"));
-    boolean addingElevated = chosen.stream().anyMatch(role -> ELEVATED.contains(role.getName().toUpperCase(Locale.ROOT))
+    boolean addingElevated = chosen.stream().anyMatch(role -> requiresOwnerApproval(role)
         && !target.getRoleIds().contains(role.getId()));
     if (!addingElevated || isOwner(currentUser()))
       return staffResponse(staff.updateWithRoles(id, name, selected, active));
@@ -65,6 +65,11 @@ public class StaffApprovalService {
     var request = StaffApprovalRequest.roles(tenant.tenantId(), tenant.userId(), id, selected, target.getRoleIds());
     queue(request, target.getName());
     return pendingResponse(request);
+  }
+
+  private boolean requiresOwnerApproval(StaffRole role) {
+    return ELEVATED.contains(role.getName().toUpperCase(Locale.ROOT))
+        || (role.getPermissions() != null && role.getPermissions().contains("FINANCIAL_REPORTS_READ"));
   }
 
   private void queue(StaffApprovalRequest request, String staffName) {

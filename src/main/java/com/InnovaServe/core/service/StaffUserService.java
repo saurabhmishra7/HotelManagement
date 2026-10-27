@@ -159,10 +159,11 @@ public class StaffUserService {
   private boolean hasElevatedRole(Collection<UUID> roleIds) {
     return roles.findAllByTenantIdAndIdIn(tenant.tenantId(), roleIds).stream()
         .anyMatch(role -> Set.of("OWNER", "HOTEL_ADMIN", "GENERAL_MANAGER")
-            .contains(role.getName().toUpperCase(Locale.ROOT)));
+            .contains(role.getName().toUpperCase(Locale.ROOT))
+            || (role.getPermissions() != null && role.getPermissions().contains("FINANCIAL_REPORTS_READ")));
   }
 
-  private boolean currentActorIsOwner() {
+  public boolean currentActorIsOwner() {
     StaffUser actor = users.findByTenantIdAndId(tenant.tenantId(), tenant.userId())
         .filter(StaffUser::isActive).orElse(null);
     return actor != null && roles.findAllByTenantIdAndIdIn(tenant.tenantId(), actor.getRoleIds()).stream()

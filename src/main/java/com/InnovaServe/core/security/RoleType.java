@@ -28,10 +28,12 @@ public enum RoleType {
   public Set<Permission> defaultPermissions() {
     return switch (this) {
       case PRINTER_OPERATOR -> EnumSet.of(Permission.PRINTER_OPERATOR);
-      case OWNER, HOTEL_ADMIN -> EnumSet.allOf(Permission.class);
+      case OWNER -> EnumSet.allOf(Permission.class);
+      case HOTEL_ADMIN -> EnumSet.complementOf(EnumSet.of(Permission.FINANCIAL_REPORTS_READ));
       case GENERAL_MANAGER ->
           EnumSet.complementOf(
               EnumSet.of(
+                  Permission.FINANCIAL_REPORTS_READ,
                   Permission.ROLE_MANAGE,
                   Permission.TENANT_SUBSCRIPTION_READ,
                   Permission.TENANT_SUBSCRIPTION_REQUEST));
