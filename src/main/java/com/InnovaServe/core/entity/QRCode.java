@@ -42,6 +42,8 @@ public class QRCode extends TenantEntity {
   public UUID getTargetId() { return targetId; }
   public String getToken() { return token; }
   public boolean isActive() { return active; }
+  public void deactivate() { active = false; }
+  public void activate() { active = true; }
   public LocalDateTime getCreatedAt() { return createdAt; }
   public LocalDateTime getRotatedAt() { return rotatedAt; }
 }

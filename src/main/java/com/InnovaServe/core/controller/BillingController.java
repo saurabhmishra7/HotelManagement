@@ -27,6 +27,18 @@ public class BillingController {
     return references.createQRCode(r.targetType(), r.targetId());
   }
 
+  @PatchMapping("/qr-codes/{id}/deactivate")
+  @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
+  public QRCode deactivateQRCode(@PathVariable UUID id) {
+    return references.deactivateQRCode(id);
+  }
+
+  @PatchMapping("/qr-codes/{id}/activate")
+  @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
+  public QRCode activateQRCode(@PathVariable UUID id) {
+    return references.activateQRCode(id);
+  }
+
   @PostMapping("/credit-notes")
   @PreAuthorize("hasAuthority('PERM_CREDIT_NOTE_CREATE')")
   public CreditNote createCreditNote(@RequestBody CreditNoteRequest r) {
@@ -41,7 +53,7 @@ public class BillingController {
 
   @GetMapping("/qr-codes")
   @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
-  public List<QRCode> qrCodes() {
+  public List<CoreReferenceService.QRCodeSummary> qrCodes() {
     return references.qrCodes();
   }
 

@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface GuestQrSessionRepository extends JpaRepository<GuestQrSession, UUID> {
   Optional<GuestQrSession> findByTokenHash(String tokenHash);
+  List<GuestQrSession> findAllByTenantIdAndQrCodeIdAndStatus(
+      UUID tenantId, UUID qrCodeId, String status);
   List<GuestQrSession> findAllByTenantIdAndTargetTypeAndTargetIdAndStatus(
       UUID tenantId, String targetType, UUID targetId, String status);
 }

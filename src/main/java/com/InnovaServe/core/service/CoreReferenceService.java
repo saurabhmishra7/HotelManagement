@@ -4,14 +4,19 @@ import com.InnovaServe.core.entity.*;
 import com.InnovaServe.core.repository.*;
 import com.InnovaServe.core.security.ModuleType;
 import com.InnovaServe.restaurant.repository.DiningTableRepository;
+import com.InnovaServe.restaurant.entity.DiningTable;
+import com.InnovaServe.restaurant.repository.GuestQrSessionRepository;
+import com.InnovaServe.stay.entity.Room;
 import com.InnovaServe.stay.repository.RoomRepository;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +31,7 @@ public class CoreReferenceService {
   private final InvoiceRepository invoices;
   private final RoomRepository rooms;
   private final DiningTableRepository tables;
+  private final GuestQrSessionRepository guestSessions;
   private final AuditService audit;
   private final ModuleEntitlementService moduleEntitlements;
 
@@ -37,6 +43,7 @@ public class CoreReferenceService {
       InvoiceRepository invoices,
       RoomRepository rooms,
       DiningTableRepository tables,
+      GuestQrSessionRepository guestSessions,
       AuditService audit,
       ModuleEntitlementService moduleEntitlements) {
     this.tenant = tenant;
@@ -46,6 +53,7 @@ public class CoreReferenceService {
     this.invoices = invoices;
     this.rooms = rooms;
     this.tables = tables;
+    this.guestSessions = guestSessions;
     this.audit = audit;
     this.moduleEntitlements = moduleEntitlements;
   }
@@ -66,6 +74,9 @@ public class CoreReferenceService {
     if (!exists) throw new java.util.NoSuchElementException("QR target not found");
     if (qrCodes.existsByTenantIdAndTargetTypeAndTargetIdAndActiveTrue(tenant.tenantId(), targetType, targetId))
       throw new IllegalStateException("An active QR code already exists for this room or table. Open its card to view or print it.");
+    if (!qrCodes.findAllByTenantIdAndTargetTypeAndTargetIdAndActiveFalse(
+        tenant.tenantId(), targetType, targetId).isEmpty())
+      throw new IllegalStateException("An inactive QR code already exists for this room or table. Activate it from its card.");
     byte[] bytes = new byte[32];
     RANDOM.nextBytes(bytes);
     QRCode saved = qrCodes.save(
@@ -81,18 +92,74 @@ public class CoreReferenceService {
   }
 
   @Transactional(readOnly = true)
-  public List<QRCode> qrCodes() {
+  public List<QRCodeSummary> qrCodes() {
     UUID tenantId = tenant.tenantId();
+    boolean roomsEnabled = moduleEntitlements.isActive(tenantId, ModuleType.STAY);
+    boolean tablesEnabled = moduleEntitlements.isActive(tenantId, ModuleType.RESTAURANT);
+    Map<UUID, String> roomNumbers = roomsEnabled
+        ? rooms.findAllByTenantIdOrderByRoomNumber(tenantId).stream()
+            .collect(Collectors.toMap(Room::getId, Room::getRoomNumber))
+        : Map.of();
+    Map<UUID, String> tableNumbers = tablesEnabled
+        ? tables.findAllByTenantIdOrderByTableNumber(tenantId).stream()
+            .collect(Collectors.toMap(DiningTable::getId, DiningTable::getTableNumber))
+        : Map.of();
     return qrCodes.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
         .filter(
             code ->
                 switch (code.getTargetType()) {
-                  case "room" -> moduleEntitlements.isActive(tenantId, ModuleType.STAY);
-                  case "dining_table" ->
-                      moduleEntitlements.isActive(tenantId, ModuleType.RESTAURANT);
+                  case "room" -> roomsEnabled;
+                  case "dining_table" -> tablesEnabled;
                   default -> false;
                 })
+        .map(code -> new QRCodeSummary(
+            code.getId(), code.getTenantId(), code.getTargetType(), code.getTargetId(),
+            code.getToken(), code.isActive(), code.getCreatedAt(), code.getRotatedAt(),
+            "room".equals(code.getTargetType())
+                ? roomNumbers.get(code.getTargetId())
+                : tableNumbers.get(code.getTargetId())))
         .toList();
+  }
+
+  public record QRCodeSummary(
+      UUID id, UUID tenantId, String targetType, UUID targetId, String token,
+      boolean active, LocalDateTime createdAt, LocalDateTime rotatedAt, String targetNumber) {}
+
+  @Transactional
+  public QRCode deactivateQRCode(UUID id) {
+    UUID tenantId = tenant.tenantId();
+    tenants.lockById(tenantId)
+        .orElseThrow(() -> new java.util.NoSuchElementException("Property not found"));
+    QRCode code = qrCodes.findByTenantIdAndId(tenantId, id)
+        .orElseThrow(() -> new java.util.NoSuchElementException("QR code not found"));
+    moduleEntitlements.requireActive(tenantId,
+        "room".equals(code.getTargetType()) ? ModuleType.STAY : ModuleType.RESTAURANT);
+    if (!code.isActive()) return code;
+    code.deactivate();
+    guestSessions.findAllByTenantIdAndQrCodeIdAndStatus(tenantId, id, "active")
+        .forEach(session -> session.close("qr_deactivated"));
+    audit.record("deactivate", "qr_code", code.getId(), null,
+        Map.of("target_type", code.getTargetType(), "target_id", code.getTargetId().toString()));
+    return code;
+  }
+
+  @Transactional
+  public QRCode activateQRCode(UUID id) {
+    UUID tenantId = tenant.tenantId();
+    tenants.lockById(tenantId)
+        .orElseThrow(() -> new java.util.NoSuchElementException("Property not found"));
+    QRCode code = qrCodes.findByTenantIdAndId(tenantId, id)
+        .orElseThrow(() -> new java.util.NoSuchElementException("QR code not found"));
+    moduleEntitlements.requireActive(tenantId,
+        "room".equals(code.getTargetType()) ? ModuleType.STAY : ModuleType.RESTAURANT);
+    if (code.isActive()) return code;
+    if (qrCodes.existsByTenantIdAndTargetTypeAndTargetIdAndActiveTrue(
+        tenantId, code.getTargetType(), code.getTargetId()))
+      throw new IllegalStateException("Another QR code is already active for this room or table");
+    code.activate();
+    audit.record("activate", "qr_code", code.getId(), null,
+        Map.of("target_type", code.getTargetType(), "target_id", code.getTargetId().toString()));
+    return code;
   }
 
   @Transactional(readOnly = true)

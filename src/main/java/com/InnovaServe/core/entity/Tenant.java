@@ -42,6 +42,12 @@ public class Tenant {
   @Column(name = "ui_palette", nullable = false, length = 16)
   private String uiPalette = "earth";
 
+  @Column(name = "guest_theme", nullable = false, length = 20)
+  private String guestTheme = "inherit";
+
+  public String getGuestTheme() { return guestTheme; }
+  public void updateGuestTheme(String theme) { this.guestTheme = theme; }
+
   @ElementCollection
   @CollectionTable(name = "tenant_meal_plan", schema = "core",
       joinColumns = @JoinColumn(name = "tenant_id"))

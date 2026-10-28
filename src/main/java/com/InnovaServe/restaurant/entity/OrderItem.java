@@ -29,6 +29,9 @@ public class OrderItem extends TenantEntity {
   @Column(name = "placed_at", insertable = false, updatable = false)
   private LocalDateTime placedAt;
 
+  @Column(name = "sent_at")
+  private LocalDateTime sentAt;
+
   @Column(name = "preparing_at")
   private LocalDateTime preparingAt;
 
@@ -47,6 +50,7 @@ public class OrderItem extends TenantEntity {
     this.quantity = quantity;
     this.notes = notes;
     this.status = status;
+    if ("sent".equals(status)) sentAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
   public UUID getOrderId() {
@@ -81,6 +85,10 @@ public class OrderItem extends TenantEntity {
     return preparingAt;
   }
 
+  public LocalDateTime getSentAt() {
+    return sentAt;
+  }
+
   public LocalDateTime getReadyAt() {
     return readyAt;
   }
@@ -92,6 +100,7 @@ public class OrderItem extends TenantEntity {
   public void send(UUID batch) {
     status = "sent";
     kotBatchId = batch;
+    sentAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
   }
 
   public void markPreparing() {

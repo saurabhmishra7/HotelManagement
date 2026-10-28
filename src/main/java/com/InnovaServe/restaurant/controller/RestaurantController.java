@@ -59,6 +59,18 @@ public class RestaurantController {
     return service.addCategory(r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
   }
 
+  @PatchMapping("/menu-categories/{id}")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
+  public MenuCategory updateCategory(@PathVariable UUID id, @RequestBody CategoryRequest r) {
+    return service.updateCategory(id, r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
+  }
+
+  @DeleteMapping("/menu-categories/{id}")
+  @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
+  public void deleteCategory(@PathVariable UUID id) {
+    service.deleteCategory(id);
+  }
+
   @GetMapping("/menu-items/{id}/recipe")
   @PreAuthorize("hasAuthority('PERM_MENU_READ') and (hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE'))")
   public Map<String, Object> recipe(@PathVariable UUID id) { return service.recipe(id); }

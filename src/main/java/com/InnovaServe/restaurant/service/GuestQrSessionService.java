@@ -159,7 +159,7 @@ public class GuestQrSessionService {
       throw new IllegalArgumentException("Guest session token is required");
     GuestQrSession session = sessions.findByTokenHash(hash(token))
         .orElseThrow(() -> new NoSuchElementException("Guest session not found"));
-    if (!session.getTenantId().equals(qr.getTenantId()) || !session.getQrCodeId().equals(qr.getId()))
+    if (!session.getTenantId().equals(qr.getTenantId()) || !qr.getId().equals(session.getQrCodeId()))
       throw new NoSuchElementException("Guest session not found");
     return session;
   }

@@ -41,6 +41,7 @@ public class RestaurantService {
   private final GuestQrSessionService guestSessions;
   private final RestaurantBillBreakdownService billBreakdown;
   private final RestaurantStationService stations;
+  private final DishFeedbackService dishFeedback;
 
   public RestaurantService(
       TenantContext t,
@@ -60,7 +61,8 @@ public class RestaurantService {
       NotificationService notifications,
       GuestQrSessionService guestSessions,
       RestaurantBillBreakdownService billBreakdown,
-      RestaurantStationService stations) {
+      RestaurantStationService stations,
+      DishFeedbackService dishFeedback) {
     tenant = t;
     this.tenants = tenants;
     categories = c;
@@ -79,6 +81,7 @@ public class RestaurantService {
     this.guestSessions = guestSessions;
     this.billBreakdown = billBreakdown;
     this.stations = stations;
+    this.dishFeedback = dishFeedback;
   }
 
   public Map<String, Object> recipe(UUID menuItemId) {
@@ -105,16 +108,46 @@ public class RestaurantService {
     return categories.save(new MenuCategory(tenant.tenantId(), name, (short) order));
   }
 
+  @Transactional
+  public MenuCategory updateCategory(UUID id, String name, int order) {
+    String cleanedName = name == null ? "" : name.trim();
+    if (cleanedName.isEmpty() || cleanedName.length() > 100)
+      throw new IllegalArgumentException("Category name must be between 1 and 100 characters");
+    MenuCategory category = categories.findByTenantIdAndId(tenant.tenantId(), id)
+        .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
+    category.update(cleanedName, (short) order);
+    return category;
+  }
+
+  @Transactional
+  public void deleteCategory(UUID id) {
+    UUID tenantId = tenant.tenantId();
+    MenuCategory category = categories.findByTenantIdAndId(tenantId, id)
+        .orElseThrow(() -> new NoSuchElementException("Menu category not found"));
+    if (items.existsByTenantIdAndCategoryId(tenantId, id))
+      throw new IllegalStateException("Move all dishes to another category before deleting this category");
+    categories.delete(category);
+  }
+
   public List<MenuItem> items(UUID category, Boolean active) {
     List<MenuItem> found =
         category == null
             ? items.findAllByTenantIdOrderByName(tenant.tenantId())
             : items.findAllByTenantIdAndCategoryIdOrderByName(tenant.tenantId(), category);
     boolean barAvailable = active == null || stations.barAvailable();
-    return found.stream()
+    List<MenuItem> visible = found.stream()
         .filter(i -> active == null || i.isActive() == active)
         .filter(i -> barAvailable || "kitchen".equals(i.getStation()))
         .toList();
+    Map<UUID, DishFeedbackService.Summary> ratings = dishFeedback.summaries(tenant.tenantId());
+    visible.forEach(item -> {
+      DishFeedbackService.Summary summary = ratings.get(item.getId());
+      if (summary != null) {
+        item.setAverageStars(Math.round(summary.averageStars() * 10.0) / 10.0);
+        item.setReviewCount(summary.reviewCount());
+      }
+    });
+    return visible;
   }
 
   @Transactional
@@ -617,6 +650,7 @@ public class RestaurantService {
     item.put("notes", orderItem.getNotes());
     item.put("status", orderItem.getStatus());
     item.put("placed_at", utcTimestamp(orderItem.getPlacedAt()));
+    item.put("sent_at", utcTimestamp(orderItem.getSentAt()));
     item.put("preparing_at", utcTimestamp(orderItem.getPreparingAt()));
     item.put("ready_at", utcTimestamp(orderItem.getReadyAt()));
     item.put("served_at", utcTimestamp(orderItem.getServedAt()));

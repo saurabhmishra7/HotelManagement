@@ -38,7 +38,7 @@ public class TenantProfileService {
   public Profile profile() {
     Tenant t = tenant();
     return new Profile(t.getName(), t.getTenantCode(), t.getGstin(), t.getAddress(),
-        t.getCheckoutTime(), t.getRestaurantServiceMode(), t.getUiPalette(), List.of("EP", "CP", "MAP", "AP").stream()
+        t.getCheckoutTime(), t.getRestaurantServiceMode(), t.getUiPalette(), t.getGuestTheme(), List.of("EP", "CP", "MAP", "AP").stream()
             .filter(t.getMealPlans()::contains).toList(), t.getLogoVersion(),
         presets.findAllByTenantIdOrderByDescriptionAsc(context.tenantId()), stations.list());
   }
@@ -138,6 +138,16 @@ public class TenantProfileService {
   public record Rules(LocalTime checkoutTime, List<String> mealPlans) {}
   public record RestaurantSettings(String serviceMode) {}
   public record Appearance(String palette) {}
+  public record GuestAppearance(String theme) {}
+
+  @Transactional
+  public Profile updateGuestAppearance(GuestAppearance request) {
+    String theme = request.theme() == null ? "" : request.theme().trim().toLowerCase(Locale.ROOT);
+    if (!Set.of("inherit", "earth", "sage", "ocean", "lavender", "mickey", "doraemon", "spongebob").contains(theme))
+      throw new IllegalArgumentException("Choose one of the available guest themes");
+    lockedTenant().updateGuestTheme(theme);
+    return profile();
+  }
   public record PresetInput(String description, BigDecimal amount) {}
   public record StationInput(String name, Boolean active) {}
 
@@ -158,7 +168,7 @@ public class TenantProfileService {
 
   public record Profile(
       String name, String tenantCode, String gstin, String address,
-      LocalTime checkoutTime, String restaurantServiceMode, String uiPalette, List<String> mealPlans,
+      LocalTime checkoutTime, String restaurantServiceMode, String uiPalette, String guestTheme, List<String> mealPlans,
       UUID logoVersion, List<StayChargePreset> chargePresets,
       List<RestaurantStationService.Station> stations) {}
 }

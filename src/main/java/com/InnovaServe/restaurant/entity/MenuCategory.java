@@ -28,4 +28,9 @@ public class MenuCategory extends TenantEntity {
   public short getSortOrder() {
     return sortOrder;
   }
+
+  public void update(String name, short order) {
+    this.name = name;
+    this.sortOrder = order;
+  }
 }

@@ -39,6 +39,12 @@ public class MenuItem extends TenantEntity {
   @Column(nullable = false)
   private boolean active = true;
 
+  @Transient
+  private double averageStars;
+
+  @Transient
+  private long reviewCount;
+
   protected MenuItem() {}
 
   public MenuItem(
@@ -93,6 +99,14 @@ public class MenuItem extends TenantEntity {
   }
 
   public Integer getServingSizeMl() { return servingSizeMl; }
+
+  public double getAverageStars() { return averageStars; }
+
+  public void setAverageStars(double value) { averageStars = value; }
+
+  public long getReviewCount() { return reviewCount; }
+
+  public void setReviewCount(long value) { reviewCount = value; }
 
   @Transient
   public String getDisplayName() {

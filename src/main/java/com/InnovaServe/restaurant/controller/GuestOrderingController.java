@@ -2,9 +2,11 @@ package com.InnovaServe.restaurant.controller;
 
 import com.InnovaServe.restaurant.service.GuestOrderingService;
 import com.InnovaServe.restaurant.service.GuestQrSessionService;
+import com.InnovaServe.restaurant.service.DishFeedbackService;
 import com.InnovaServe.restaurant.entity.GuestQrSession;
 import com.InnovaServe.stay.service.RoomServiceRequestService;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,10 +110,19 @@ public class GuestOrderingController {
   @PostMapping("/orders/{orderId}/request-bill")
   public Map<String, Object> requestBill(
       @PathVariable String token, @RequestHeader("X-Guest-Session") String sessionToken,
-      @PathVariable UUID orderId) {
+      @PathVariable UUID orderId, @RequestBody(required = false) BillRequest request) {
     GuestQrSession session = sessions.requireActive(token, sessionToken);
-    return guestOrdering.requestBill(token, session.getId(), orderId);
+    List<DishFeedbackService.Rating> ratings = request == null || request.ratings() == null
+        ? null : request.ratings().stream().map(row -> row == null ? null
+            : new DishFeedbackService.Rating(row.menuItemId(), row.stars())).toList();
+    return guestOrdering.requestBill(token, session.getId(), orderId, ratings,
+        request == null ? null : request.feedback());
   }
+
+  public record BillRequest(List<RatingRequest> ratings, String feedback) {}
+
+  public record RatingRequest(@JsonProperty("menu_item_id") UUID menuItemId,
+      BigDecimal stars) {}
 
   public record GuestOrderRequest(List<GuestItemRequest> items) {}
 

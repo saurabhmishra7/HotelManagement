@@ -33,6 +33,7 @@ public class GuestOrderingService {
   private final RoomServiceRequestService roomServiceRequests;
   private final GuestQrSessionService guestQrSessions;
   private final RestaurantStationService stations;
+  private final DishFeedbackService dishFeedback;
 
   public GuestOrderingService(
       QRCodeRepository qrCodes,
@@ -50,7 +51,8 @@ public class GuestOrderingService {
       RestaurantBillBreakdownService billBreakdown,
       RoomServiceRequestService roomServiceRequests,
       GuestQrSessionService guestQrSessions,
-      RestaurantStationService stations) {
+      RestaurantStationService stations,
+      DishFeedbackService dishFeedback) {
     this.qrCodes = qrCodes;
     this.tenants = tenants;
     this.categories = categories;
@@ -67,6 +69,7 @@ public class GuestOrderingService {
     this.roomServiceRequests = roomServiceRequests;
     this.guestQrSessions = guestQrSessions;
     this.stations = stations;
+    this.dishFeedback = dishFeedback;
   }
 
   @Transactional(readOnly = true)
@@ -101,18 +104,22 @@ public class GuestOrderingService {
                         "name", category.getName(),
                         "sort_order", category.getSortOrder()))
             .toList();
+    Map<UUID, DishFeedbackService.Summary> ratingSummaries = dishFeedback.summaries(tenantId);
     List<Map<String, Object>> menu =
         availableItems.stream()
-            .map(
-                item ->
-                    Map.<String, Object>of(
+            .map(item -> {
+                  DishFeedbackService.Summary summary = ratingSummaries.get(item.getId());
+                  return Map.<String, Object>of(
                         "id", item.getId(),
                         "category_id", item.getCategoryId(),
                         "name", item.getDisplayName(),
                         "price", item.getPrice(),
                         "station", item.getStation(),
                         "veg_flag", item.isVegFlag(),
-                        "food_type", item.getFoodType()))
+                        "food_type", item.getFoodType(),
+                        "average_stars", summary == null ? 0.0 : Math.round(summary.averageStars() * 10.0) / 10.0,
+                        "review_count", summary == null ? 0L : summary.reviewCount());
+                })
             .toList();
 
     Map<String, Object> target = new LinkedHashMap<>();
@@ -129,6 +136,7 @@ public class GuestOrderingService {
     tenantInfo.put("name", tenant.getName());
     tenantInfo.put("address", tenant.getAddress());
     tenantInfo.put("palette", tenant.getUiPalette());
+    tenantInfo.put("guest_theme", tenant.getGuestTheme());
     if (tenant.getLogoVersion() != null) {
       tenantInfo.put("logo_version", tenant.getLogoVersion());
       tenantInfo.put("logo_url", "/api/v1/guest/qr/" + token + "/logo?v=" + tenant.getLogoVersion());
@@ -251,7 +259,8 @@ public class GuestOrderingService {
   }
 
   @Transactional
-  public Map<String, Object> requestBill(String token, UUID guestSessionId, UUID orderId) {
+  public Map<String, Object> requestBill(String token, UUID guestSessionId, UUID orderId,
+      List<DishFeedbackService.Rating> ratings, String writtenFeedback) {
     QRCode qrCode = resolve(token);
     entitlements.requireActive(qrCode.getTenantId(), ModuleType.RESTAURANT);
     RestaurantOrder order =
@@ -268,6 +277,9 @@ public class GuestOrderingService {
     if (billableItems.isEmpty() || billableItems.stream().anyMatch(item -> !"served".equals(item.getStatus())))
       throw new IllegalStateException("Wait until every item has been served before requesting the bill");
     if (order.getBillRequestedAt() == null) {
+      if ("dining_table".equals(qrCode.getTargetType()))
+        dishFeedback.saveForBillRequest(qrCode.getTenantId(), orderId, guestSessionId,
+            billableItems, ratings, writtenFeedback);
       order.requestBill();
       String location = "dining_table".equals(qrCode.getTargetType())
           ? tables.findByTenantIdAndId(qrCode.getTenantId(), qrCode.getTargetId())
