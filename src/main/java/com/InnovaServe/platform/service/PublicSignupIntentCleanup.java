@@ -4,6 +4,7 @@ import com.InnovaServe.platform.repository.PublicSignupIntentRepository;
 import com.InnovaServe.platform.repository.TenantSubscriptionCheckoutRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,7 +26,8 @@ public class PublicSignupIntentCleanup {
   @Transactional
   public void expireAbandonedCheckouts() {
     Instant now = clock.instant();
-    intents.findAllByStatusAndExpiresAtBefore("pending", now).forEach(intent -> {
+    intents.findAllByStatusInAndExpiresAtBefore(
+        List.of("pending", "email_pending", "email_verified", "payment_pending"), now).forEach(intent -> {
       intent.expire();
       intents.save(intent);
     });

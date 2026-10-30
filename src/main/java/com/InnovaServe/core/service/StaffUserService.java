@@ -77,39 +77,6 @@ public class StaffUserService {
   }
 
   @Transactional
-  public StaffUser create(
-      String name, String phone, String email, String password, String pin, UUID role) {
-    return createWithRoles(name, phone, email, password, pin, role == null ? List.of() : List.of(role));
-  }
-
-  @Transactional
-  public StaffUser createWithRoles(
-      String name, String phone, String email, String password, String pin, Collection<UUID> selectedRoles) {
-    UUID tid = tenant.tenantId();
-    AccountValidation.requireMobile(phone);
-    if (email != null && !email.isBlank()) AccountValidation.requireEmail(email);
-    AccountValidation.requirePassword(password, 12);
-    if (pin != null && !pin.matches("[0-9]{4,8}"))
-      throw new IllegalArgumentException("Staff PIN must contain 4 to 8 digits");
-    if (users.existsByTenantIdAndPhone(tid, phone))
-      throw new IllegalArgumentException("PhoneAlreadyExists");
-    Set<UUID> roleIds = validateRoles(selectedRoles);
-    if (hasElevatedRole(roleIds) && !currentActorIsOwner())
-      throw new IllegalStateException("Owner approval is required before assigning an elevated role");
-    StaffUser user =
-        new StaffUser(
-            tid,
-            name,
-            phone,
-            email,
-            encoder.encode(password),
-            pin == null ? null : encoder.encode(pin),
-            roleIds.iterator().next());
-    user.setRoleIds(roleIds);
-    return users.save(user);
-  }
-
-  @Transactional
   public StaffUser update(UUID id, String name, UUID role, Boolean active) {
     return updateWithRoles(id, name, role == null ? null : List.of(role), active);
   }

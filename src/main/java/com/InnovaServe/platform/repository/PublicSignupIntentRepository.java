@@ -15,6 +15,18 @@ public interface PublicSignupIntentRepository extends JpaRepository<PublicSignup
   boolean existsByOwnerEmailIgnoreCaseAndStatus(String ownerEmail, String status);
   boolean existsByOwnerEmailIgnoreCaseAndStatusAndIdNot(String ownerEmail, String status, UUID id);
 
+  boolean existsByOwnerEmailIgnoreCaseAndStatusInAndExpiresAtAfter(
+      String ownerEmail, List<String> statuses, Instant now);
+  boolean existsByOwnerEmailIgnoreCaseAndStatusInAndIdNotAndExpiresAtAfter(
+      String ownerEmail, List<String> statuses, UUID id, Instant now);
+  List<PublicSignupIntent> findAllByOwnerEmailIgnoreCaseAndStatusInAndExpiresAtBefore(
+      String ownerEmail, List<String> statuses, Instant now);
+  List<PublicSignupIntent> findAllByStatusInAndExpiresAtBefore(List<String> statuses, Instant now);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select i from PublicSignupIntent i where i.emailVerificationTokenHash = :hash")
+  Optional<PublicSignupIntent> lockByEmailVerificationTokenHash(@Param("hash") String hash);
+
   List<PublicSignupIntent> findAllByStatusAndExpiresAtBefore(String status, Instant now);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -142,6 +142,7 @@ public class StayService {
   @Transactional
   public Stay checkIn(CheckIn r) {
     UUID tid = tenant.tenantId();
+    String advanceMode = validateAdvanceMode(r.advancePaid(), r.advancePaymentMode());
     profile.requireMealPlan(r.plan() == null ? "EP" : r.plan());
     Room room =
         rooms
@@ -171,6 +172,7 @@ public class StayService {
                 r.tariff(),
                 r.expectedCheckOutAt(),
                 r.advancePaid() == null ? BigDecimal.ZERO : r.advancePaid()));
+    stay.setAdvancePaymentMode(advanceMode);
     account.setLinkedEntityId(stay.getId());
     room.setStatus("occupied");
     if (r.isForeignGuest()) forms.save(new FormCSubmission(tid, stay.getId()));
@@ -231,6 +233,7 @@ public class StayService {
     stayDetails.put("expectedCheckOutAt", stay.getExpectedCheckOutAt());
     stayDetails.put("actualCheckOutAt", stay.getActualCheckOutAt());
     stayDetails.put("advancePaid", stay.getAdvancePaid());
+    stayDetails.put("advancePaymentMode", stay.getAdvancePaymentMode());
     stayDetails.put("status", stay.getStatus());
     return stayDetails;
   }
@@ -325,6 +328,7 @@ public class StayService {
         guest.idProofTypeOther(),
         guest.address());
     validateStayUpdate(request, stay);
+    stay.setAdvancePaymentMode(validateAdvanceMode(request.advancePaid(), request.advancePaymentMode()));
     stay.updateDetails(
         request.guestCount(),
         request.isForeignGuest(),
@@ -337,6 +341,16 @@ public class StayService {
       forms.save(new FormCSubmission(tenantId, stayId));
     }
     return stayDetails(stayId);
+  }
+
+  private String validateAdvanceMode(BigDecimal amount, String mode) {
+    if (amount != null && amount.signum() < 0)
+      throw new IllegalArgumentException("Advance paid cannot be negative");
+    if (amount == null || amount.signum() == 0) return null;
+    String normalized = mode == null ? "" : mode.trim().toLowerCase(java.util.Locale.ROOT);
+    if (!Set.of("cash", "card", "upi").contains(normalized))
+      throw new IllegalArgumentException("Choose Cash, Card or UPI for the advance payment");
+    return normalized;
   }
 
   private void validateStayUpdate(StayUpdate request, Stay stay) {
@@ -483,6 +497,9 @@ public class StayService {
       throw new IllegalStateException(
           "The finalized room bill has unbilled stay charges. Resolve them before checkout; the existing invoice cannot be changed.");
     }
+    BillingService.StayAdvanceResult advance = billing.applyStayAdvance(
+        stay.getAccountId(), stay.getId(), stay.getCheckoutInvoiceId(),
+        stay.getAdvancePaid(), stay.getCheckInAt());
     List<com.InnovaServe.core.entity.Invoice> all = billing.invoicesForAccount(stay.getAccountId());
     BigDecimal due = BigDecimal.ZERO;
     List<Map<String, Object>> invoiceBreakdown = new ArrayList<>();
@@ -505,7 +522,10 @@ public class StayService {
     return Map.of(
         "invoices", all,
         "invoice_breakdown", invoiceBreakdown,
-        "total_due", due.toPlainString());
+        "total_due", due.toPlainString(),
+        "advance_paid", stay.getAdvancePaid(),
+        "advance_applied", advance.applied(),
+        "advance_remaining", advance.remaining());
   }
 
   @Transactional
@@ -563,6 +583,7 @@ public class StayService {
       String plan,
       BigDecimal tariff,
       BigDecimal advancePaid,
+      String advancePaymentMode,
       boolean isForeignGuest,
       LocalDateTime expectedCheckOutAt) {}
 
@@ -572,6 +593,7 @@ public class StayService {
       String plan,
       BigDecimal tariff,
       BigDecimal advancePaid,
+      String advancePaymentMode,
       boolean isForeignGuest,
       LocalDateTime expectedCheckOutAt) {}
 }

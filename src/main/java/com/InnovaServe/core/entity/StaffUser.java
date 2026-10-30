@@ -54,6 +54,9 @@ public class StaffUser {
   @Column(name = "email_verified_at")
   private Instant emailVerifiedAt;
 
+  @Column(name = "phone_verified_at")
+  private Instant phoneVerifiedAt;
+
   @Column(name = "role_id")
   private UUID roleId;
 
@@ -149,6 +152,16 @@ public class StaffUser {
   public Instant getEmailVerifiedAt() {
     return emailVerifiedAt;
   }
+
+  public Instant getPhoneVerifiedAt() { return phoneVerifiedAt; }
+
+  public void markEmailVerified(Instant now) {
+    emailVerifiedAt = now;
+    emailVerificationTokenHash = null;
+    emailVerificationExpiresAt = null;
+  }
+
+  public void markPhoneVerified(Instant now) { phoneVerifiedAt = now; }
 
   public void issueEmailVerification(String tokenHash, Instant expiresAt) {
     emailVerificationTokenHash = tokenHash;

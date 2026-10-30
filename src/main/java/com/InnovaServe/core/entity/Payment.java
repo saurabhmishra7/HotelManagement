@@ -4,8 +4,10 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicInsert;
 
 @Entity
+@DynamicInsert
 @Table(name = "payment", schema = "core")
 public class Payment extends TenantEntity {
   @Column(name = "invoice_id", nullable = false)
@@ -20,7 +22,7 @@ public class Payment extends TenantEntity {
   @Column(length = 100)
   private String reference;
 
-  @Column(name = "paid_at", insertable = false, updatable = false)
+  @Column(name = "paid_at", updatable = false)
   private LocalDateTime paidAt;
 
   protected Payment() {}
@@ -31,6 +33,12 @@ public class Payment extends TenantEntity {
     this.mode = mode;
     this.amount = amount;
     this.reference = reference;
+  }
+
+  public Payment(UUID t, UUID invoice, String mode, BigDecimal amount, String reference,
+      LocalDateTime paidAt) {
+    this(t, invoice, mode, amount, reference);
+    this.paidAt = paidAt;
   }
 
   public UUID getInvoiceId() {

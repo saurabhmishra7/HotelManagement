@@ -48,6 +48,9 @@ public class Stay extends TenantEntity {
   @Column(name = "advance_paid", nullable = false, precision = 10, scale = 2)
   private BigDecimal advancePaid;
 
+  @Column(name = "advance_payment_mode", length = 10)
+  private String advancePaymentMode;
+
   @Column(nullable = false, length = 15)
   private String status;
 
@@ -125,6 +128,10 @@ public class Stay extends TenantEntity {
   public BigDecimal getAdvancePaid() {
     return advancePaid;
   }
+
+  public String getAdvancePaymentMode() { return advancePaymentMode; }
+
+  public void setAdvancePaymentMode(String mode) { this.advancePaymentMode = mode; }
 
   public String getStatus() {
     return status;

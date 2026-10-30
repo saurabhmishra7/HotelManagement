@@ -30,11 +30,10 @@ public class StaffApprovalRequest {
   protected StaffApprovalRequest() {}
 
   public static StaffApprovalRequest create(UUID tenantId, UUID requester, String name, String phone,
-      String email, String passwordHash, String pinHash, Collection<UUID> roleIds) {
+      String email, Collection<UUID> roleIds) {
     var request = new StaffApprovalRequest();
     request.id = UUID.randomUUID(); request.tenantId = tenantId; request.requestedBy = requester;
     request.requestType = "create"; request.name = name; request.phone = phone; request.email = email;
-    request.passwordHash = passwordHash; request.pinHash = pinHash;
     request.roleIds = List.copyOf(roleIds); request.createdAt = Instant.now();
     return request;
   }

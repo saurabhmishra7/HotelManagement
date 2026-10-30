@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
   List<Payment> findAllByTenantIdAndInvoiceIdOrderByPaidAt(UUID t, UUID invoice);
 
+  List<Payment> findAllByTenantIdAndModeAndReferenceStartingWith(UUID tenantId, String mode, String prefix);
+
   @Query(
       "select coalesce(sum(p.amount),0) from Payment p where p.tenantId=:t and"
           + " p.invoiceId=:invoice")

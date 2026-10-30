@@ -18,32 +18,34 @@ public class StaffApprovalService {
   private final TenantContext tenant;
   private final PasswordEncoder encoder;
   private final List<StaffApprovalDelivery> deliveries;
+  private final StaffInvitationService invitations;
 
   public StaffApprovalService(StaffApprovalRequestRepository requests, StaffUserRepository users,
       StaffRoleRepository roles, StaffUserService staff, TenantContext tenant,
-      PasswordEncoder encoder, List<StaffApprovalDelivery> deliveries) {
+      PasswordEncoder encoder, List<StaffApprovalDelivery> deliveries,
+      StaffInvitationService invitations) {
     this.requests = requests; this.users = users; this.roles = roles; this.staff = staff;
     this.tenant = tenant; this.encoder = encoder; this.deliveries = deliveries;
+    this.invitations = invitations;
   }
 
   @Transactional
-  public Map<String, Object> create(String name, String phone, String email, String password,
-      String pin, Collection<UUID> selected) {
+  public Map<String, Object> invite(String name, String phone, String email, Collection<UUID> selected) {
     List<StaffRole> chosen = requireRoles(selected);
-    if (chosen.stream().noneMatch(this::requiresOwnerApproval)
-        || isOwner(currentUser()))
-      return staffResponse(staff.createWithRoles(name, phone, email, password, pin, selected));
+    if (chosen.stream().noneMatch(this::requiresOwnerApproval) || isOwner(currentUser())) {
+      var invitation = invitations.issue(name, phone, email, selected);
+      return Map.of("approval_required", false, "invitation_id", invitation.getId());
+    }
+    if (name == null || name.isBlank()) throw new IllegalArgumentException("Staff name is required");
     AccountValidation.requireMobile(phone);
-    if (email != null && !email.isBlank()) AccountValidation.requireEmail(email);
-    AccountValidation.requirePassword(password, 12);
-    if (pin != null && !pin.matches("[0-9]{4,8}"))
-      throw new IllegalArgumentException("Staff PIN must contain 4 to 8 digits");
-    if (users.existsByTenantIdAndPhone(tenant.tenantId(), phone))
-      throw new IllegalArgumentException("PhoneAlreadyExists");
+    AccountValidation.requireEmail(email);
+    if (users.existsByTenantIdAndPhone(tenant.tenantId(), phone)
+        || invitations.hasPendingPhone(phone))
+      throw new IllegalArgumentException("This phone already has an account or pending invitation");
     if (requests.existsByTenantIdAndPhoneAndStatus(tenant.tenantId(), phone, "pending"))
       throw new IllegalArgumentException("A team approval for this phone is already pending");
     var request = StaffApprovalRequest.create(tenant.tenantId(), tenant.userId(), name, phone,
-        email, encoder.encode(password), pin == null ? null : encoder.encode(pin), selected);
+        email, selected);
     queue(request, name);
     return pendingResponse(request);
   }
@@ -119,10 +121,16 @@ public class StaffApprovalService {
       if ("create".equals(request.getRequestType())) {
         if (users.existsByTenantIdAndPhone(tenant.tenantId(), request.getPhone()))
           throw new IllegalStateException("This phone is already used by another staff account");
-        StaffUser created = new StaffUser(tenant.tenantId(), request.getName(), request.getPhone(),
-            request.getEmail(), request.getPasswordHash(), request.getPinHash(), request.getRoleIds().get(0));
-        created.setRoleIds(request.getRoleIds());
-        users.save(created);
+        if (request.getPasswordHash() == null) {
+          invitations.issue(request.getName(), request.getPhone(), request.getEmail(), request.getRoleIds());
+        } else {
+          // Requests submitted before invitation onboarding may already hold credential hashes.
+          // Keep them reviewable, but no new request can enter this path.
+          StaffUser created = new StaffUser(tenant.tenantId(), request.getName(), request.getPhone(),
+              request.getEmail(), request.getPasswordHash(), request.getPinHash(), request.getRoleIds().get(0));
+          created.setRoleIds(request.getRoleIds());
+          users.save(created);
+        }
       } else {
         StaffUser target = users.findByTenantIdAndId(tenant.tenantId(), request.getTargetUserId())
             .orElseThrow(() -> new NoSuchElementException("Staff member no longer exists"));

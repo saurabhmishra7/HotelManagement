@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class BillingService {
+  private final com.InnovaServe.stay.repository.StayRepository stays;
   private final TenantContext tenant;
   private final InvoiceRepository invoices;
   private final InvoiceLineItemRepository lines;
@@ -33,7 +34,8 @@ public class BillingService {
       TaxRuleRepository tax,
       CreditNoteRepository creditNotes,
       ModuleEntitlementService moduleEntitlements,
-      ApplicationEventPublisher events) {
+      ApplicationEventPublisher events,
+      com.InnovaServe.stay.repository.StayRepository stays) {
     tenant = t;
     invoices = i;
     lines = l;
@@ -43,6 +45,7 @@ public class BillingService {
     this.creditNotes = creditNotes;
     this.moduleEntitlements = moduleEntitlements;
     this.events = events;
+    this.stays = stays;
   }
 
   public List<TaxRule> taxes(String applies) {
@@ -284,11 +287,34 @@ public class BillingService {
         "invoice", i,
         "line_items", lines.findAllByTenantIdAndInvoiceId(tenant.tenantId(), id),
         "payments", invoicePayments,
+        "payment_history", paymentHistory(i, invoicePayments),
         "credit_notes", invoiceCredits,
         "paid_total", paidTotal,
         "credit_total", creditTotal,
         "amount_due", i.getTotalAmount().subtract(paidTotal).subtract(creditTotal).max(BigDecimal.ZERO));
   }
+
+  private List<PaymentHistory> paymentHistory(Invoice invoice, List<Payment> invoicePayments) {
+    var stay = invoicePayments.stream().anyMatch(p -> "advance".equals(p.getMode()))
+        && invoice.getAccountId() != null
+        ? stays.findAllByTenantIdAndAccountId(tenant.tenantId(), invoice.getAccountId()).stream().findFirst()
+        : Optional.<com.InnovaServe.stay.entity.Stay>empty();
+    return invoicePayments.stream().map(payment -> {
+      boolean advance = "advance".equals(payment.getMode());
+      String mode = advance ? stay.map(com.InnovaServe.stay.entity.Stay::getAdvancePaymentMode).orElse(null)
+          : payment.getMode();
+      // Advances copy Stay.checkInAt (server-local LocalDateTime.now()); ordinary receipts
+      // use the database UTC timestamp. Send an explicit offset instead of guessing in the UI.
+      var paidAt = payment.getPaidAt() == null ? null : payment.getPaidAt()
+          .atZone(advance ? ZoneId.systemDefault() : ZoneOffset.UTC).toOffsetDateTime();
+      return new PaymentHistory(payment.getId(), paidAt, mode, payment.getAmount(),
+          advance ? "Check-in advance applied" : payment.getReference(), advance ? "advance" : "payment");
+    }).sorted(Comparator.comparing(PaymentHistory::paidAt,
+        Comparator.nullsLast(Comparator.comparing(OffsetDateTime::toInstant)))).toList();
+  }
+
+  public record PaymentHistory(UUID id, OffsetDateTime paidAt, String mode, BigDecimal amount,
+      String reference, String paymentType) {}
 
   public Map<String, Object> invoiceByReference(String reference) {
     String value = reference == null ? "" : reference.trim();
@@ -321,6 +347,38 @@ public class BillingService {
         creditNotes.totalForInvoice(tenant.tenantId(), invoice.getId());
     return invoice.getTotalAmount().subtract(credits).subtract(amountPaid(invoice.getId()))
         .max(BigDecimal.ZERO);
+  }
+
+  @Transactional
+  public StayAdvanceResult applyStayAdvance(UUID accountId, UUID stayId, UUID roomInvoiceId,
+      BigDecimal advancePaid, LocalDateTime receivedAt) {
+    Account account = account(accountId);
+    if (!"stay".equals(account.getOpenedByModule()) || !"open".equals(account.getStatus()))
+      throw new IllegalStateException("Stay account is not open");
+    String referencePrefix = "stay-advance:" + stayId + ":";
+    List<Payment> previous = payments.findAllByTenantIdAndModeAndReferenceStartingWith(
+        tenant.tenantId(), "advance", referencePrefix);
+    BigDecimal applied = previous.stream().map(Payment::getAmount)
+        .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal remaining = advancePaid.subtract(applied).max(BigDecimal.ZERO);
+    List<Invoice> accountInvoices = new ArrayList<>(invoicesForAccount(accountId));
+    accountInvoices.sort(Comparator.comparing(invoice -> !invoice.getId().equals(roomInvoiceId)));
+    for (Invoice invoice : accountInvoices) {
+      if (remaining.signum() <= 0) break;
+      if (!Set.of("final", "credited").contains(invoice.getStatus())) continue;
+      String reference = referencePrefix + invoice.getId();
+      if (previous.stream().anyMatch(payment -> reference.equals(payment.getReference()))) continue;
+      BigDecimal due = amountDue(invoice);
+      BigDecimal allocation = remaining.min(due);
+      if (allocation.signum() <= 0) continue;
+      payments.save(new Payment(tenant.tenantId(), invoice.getId(), "advance", allocation,
+          reference, receivedAt));
+      if (allocation.compareTo(due) == 0)
+        events.publishEvent(new InvoiceFullyPaidEvent(tenant.tenantId(), invoice.getId()));
+      applied = applied.add(allocation);
+      remaining = remaining.subtract(allocation);
+    }
+    return new StayAdvanceResult(applied, remaining);
   }
 
   @Transactional
@@ -392,4 +450,6 @@ public class BillingService {
   public record PaymentResult(Payment payment, boolean overpayment) {}
 
   public record SettlementResult(List<UUID> paidInvoiceIds, BigDecimal totalAmount) {}
+
+  public record StayAdvanceResult(BigDecimal applied, BigDecimal remaining) {}
 }

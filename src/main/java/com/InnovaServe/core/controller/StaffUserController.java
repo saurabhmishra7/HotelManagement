@@ -20,15 +20,54 @@ public class StaffUserController {
   private final TokenService tokens;
   private final PasswordResetService passwordResets;
   private final EmailVerificationService emailVerifications;
+  private final com.InnovaServe.core.service.StaffInvitationService invitations;
 
   public StaffUserController(
       StaffUserService s, StaffApprovalService approvals, TokenService tokens, PasswordResetService passwordResets,
-      EmailVerificationService emailVerifications) {
+      EmailVerificationService emailVerifications,
+      com.InnovaServe.core.service.StaffInvitationService invitations) {
     service = s;
     this.approvals = approvals;
     this.tokens = tokens;
     this.passwordResets = passwordResets;
     this.emailVerifications = emailVerifications;
+    this.invitations = invitations;
+  }
+
+  @PostMapping("/auth/invitations/accept")
+  public Map<String, Object> acceptInvitation(@RequestBody AcceptInvitation request) {
+    StaffUser user = invitations.accept(request.token(), request.password(), request.pin());
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("token", tokens.issue(user.getTenantId(), user.getId(), user.getRoleId()));
+    result.put("user", user(user));
+    result.put("tenant_id", user.getTenantId());
+    result.putAll(invitations.property(user.getTenantId()));
+    return result;
+  }
+
+  @PostMapping("/staff-invitations")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
+  public ResponseEntity<Map<String, Object>> invite(@RequestBody InviteStaff request) {
+    Map<String, Object> result = approvals.invite(request.name(), request.phone(), request.email(), request.roleIds());
+    return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
+  }
+
+  @GetMapping("/staff-invitations")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
+  public List<Map<String, Object>> pendingInvitations() { return invitations.pending(); }
+
+  @PostMapping("/staff-invitations/{id}/resend")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
+  public Map<String, Boolean> resendInvitation(@PathVariable UUID id) {
+    invitations.resend(id);
+    return Map.of("sent", true);
+  }
+
+  @DeleteMapping("/staff-invitations/{id}")
+  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
+  public Map<String, Boolean> revokeInvitation(@PathVariable UUID id) {
+    invitations.revoke(id);
+    return Map.of("revoked", true);
   }
 
   @PostMapping("/auth/login")
@@ -67,14 +106,6 @@ public class StaffUserController {
   @PreAuthorize("hasAnyAuthority('PERM_STAFF_READ', 'PERM_STAFF_MANAGE')")
   public List<Map<String, Object>> users() {
     return service.listWithRoles();
-  }
-
-  @PostMapping("/create/user")
-  @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public ResponseEntity<Map<String, Object>> create(@RequestBody CreateUser r) {
-    Map<String, Object> result = approvals.create(r.name(), r.phone(), r.email(), r.password(), r.pin(),
-        r.roleIds() != null ? r.roleIds() : r.roleId() == null ? List.of() : List.of(r.roleId()));
-    return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
   }
 
   @PatchMapping("/user/{id}")
@@ -116,6 +147,11 @@ public class StaffUserController {
     }
   }
 
+  public record InviteStaff(String name, String phone, String email,
+      @JsonProperty("role_ids") List<UUID> roleIds) {}
+
+  public record AcceptInvitation(String token, String password, String pin) {}
+
   public record PasswordResetRequest(
       @JsonProperty("tenant_code") String tenantCode, String email) {}
 
@@ -125,14 +161,6 @@ public class StaffUserController {
       @JsonProperty("new_password") String newPassword) {}
 
   public record EmailVerificationConfirm(String token) {}
-
-  public record CreateUser(
-      String name,
-      String phone,
-      String email,
-      String password,
-      @JsonProperty("role_id") UUID roleId,
-      String pin, @JsonProperty("role_ids") List<UUID> roleIds) {}
 
   public record UpdateUser(String name, @JsonProperty("role_id") UUID roleId, Boolean active,
       @JsonProperty("role_ids") List<UUID> roleIds) {}

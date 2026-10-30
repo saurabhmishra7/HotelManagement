@@ -1,6 +1,6 @@
 # Production email setup (Resend)
 
-InnovaServe sends password-reset links, optional email-verification links, and
+InnovaServe sends password-reset links, staff invitations, required owner signup email-verification links, and
 Owner approval messages through the backend's `EmailSender`. The `dev` profile
 uses Resend's test sender and redirects every message to one development inbox.
 Production must use a domain you control and a sender address on that domain.
@@ -35,11 +35,15 @@ APP_MAIL_FROM=InnovaServe <no-reply@mail.example.com>
 APP_MAIL_RESEND_API_KEY=<production sending key>
 APP_PASSWORD_RESET_BASE_URL=https://staff.example.com/reset-password
 APP_EMAIL_VERIFICATION_BASE_URL=https://staff.example.com/
+APP_SIGNUP_VERIFICATION_BASE_URL=https://staff.example.com/
 APP_STAFF_APPROVAL_BASE_URL=https://staff.example.com/app/team
+APP_STAFF_INVITATION_BASE_URL=https://staff.example.com/invite
 ```
 
 The domain in `APP_MAIL_FROM` must be the one verified for sending in Resend.
-The three URLs must point to the deployed staff application, not `localhost`.
+All five URLs must point to the deployed tenant/staff application, not the
+platform admin portal or `localhost`. In local development the tenant portal
+runs on port 3000 and the platform portal runs on port 5174.
 Restart or redeploy the backend after changing environment variables.
 
 Do **not** activate the `dev` Spring profile in production: leave
@@ -66,6 +70,21 @@ Also confirm the reset link opens the deployed staff application and a new
 password can be set. The UI intentionally returns the same request message
 for unknown accounts, so use a known account for this check. If delivery
 fails, inspect backend logs and the Resend activity/error details.
+
+Also start a new tenant signup with a real owner email. The property must remain
+inactive until that address receives and opens the 30-minute verification link;
+the tenant portal then opens payment or activates a trial. After activation the
+owner receives a separate email containing the property code and signs in
+manually. The link includes an intent ID
+so an expired link can request a replacement while the 24-hour draft is open.
+Phone verification is prepared in the backend, but its signup gate remains off
+until an SMS verification provider is configured.
+
+For staff onboarding, invite a new staff member from **Team & roles**. The
+invitation email should reach that staff member, open `/invite`, and let them
+set their password and PIN before entering the workspace. Links expire after
+48 hours; Team & roles can resend or revoke a pending invitation. Elevated
+roles require Owner PIN approval before the invitation is emailed.
 
 Production sends to the actual staff recipient. The `[DEV]` prefix and
 development-inbox redirection apply only while the `dev` profile is active.

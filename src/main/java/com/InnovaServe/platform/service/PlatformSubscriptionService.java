@@ -83,6 +83,8 @@ public class PlatformSubscriptionService {
 
     LocalDate expiresOn = expiryDate(startsOn, plan.getDuration());
     String status = startsOn.isAfter(today) ? "scheduled" : "active";
+    // Persist any expiry before inserting a new current subscription.
+    subscriptions.flush();
     TenantSubscription created =
         subscriptions.save(
             new TenantSubscription(
@@ -170,6 +172,10 @@ public class PlatformSubscriptionService {
         ? current.getExpiresOn().plusDays(1) : today;
     LocalDate expiresOn = expiryDate(startsOn, plan.getDuration());
     String status = startsOn.isAfter(today) ? "scheduled" : "active";
+    // Hibernate may execute INSERTs before queued UPDATEs. Release the partial
+    // unique index for the old active/trial row before inserting its replacement.
+    // This flush remains in the same transaction: failures roll everything back.
+    subscriptions.flush();
     TenantSubscription created = subscriptions.save(new TenantSubscription(
         tenantId, plan.getId(), plan.getPrice(), paid, null, startsOn, expiresOn,
         status, null, plan.getModules(), false, plan.isBarEnabled()));
