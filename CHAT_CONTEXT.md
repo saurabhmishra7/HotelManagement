@@ -1,6 +1,9 @@
 # InnovaServe working context
 
 ## Current task: tenant frontend Vercel security and deployment guidance (31 October 2026)
+### Follow-up: Catalyst Pipelines YAML requested
+- User requests concrete `catalyst-pipelines.yaml` for backend. Official Catalyst docs confirm Java 21 AppSail, YAML `images/jobs/stages`, Stratus artifacts, CLI standalone deploy, and Console-managed env vars for standalone deploys. Plan to provide paste-ready YAML with Maven Java 21 build, Stratus JAR handoff, Node 22 CLI standalone deploy from isolated temporary project directory (so linked `app-config.json` cannot replace Console runtime vars), and `ENABLE_DEPLOY` gate default false. Pipeline needs BUCKET_NAME, CATALYST_TOKEN, CATALYST_PROJECT_ID, CATALYST_ORG global vars; full DB-backed tests remain in existing GitHub Actions because Catalyst runner has no PostgreSQL service configured. No pipeline executed and no repo file changed this turn.
+
 ### Follow-up: guide Catalyst portal CI/CD setup
 - User asks for guided setup in Catalyst Pipelines. Read Catalyst AppSail skill and official Pipelines docs. Backend currently on local `deployment-setup` branch with many uncommitted changes; `.github/workflows/ci-cd.yml`, `catalyst.json`, `app-config.json`, and deployment guide are untracked locally, so portal Git integration will not see them until reviewed/committed. `.catalystrc` identifies Innovaserve IN project. Recommended portal flow: choose Pipelines and backend GitHub repo, start with Java 21 build/check YAML on main, monitor execution, then add AppSail deploy only after resolving risk that CLI redeploy can replace Console-only runtime secrets. Existing GitHub Actions deploy job remains disabled. No edits or remote changes made.
 
@@ -174,3 +177,46 @@ Read this file at the start of each user request and update it after every promp
 - Sidebar administration cleanup: sidebar rendering now excludes the Administration navigation group. Team, Property setup, Subscription and Subscription plans remain available through the top-right AccountMenu with existing permission filtering. Shared navigation definitions/mobile navigation are unchanged. Static diff check only; no tests run.
 
 - Deployment brief review (2026-10-30): read attached gemini deployment/security/testing brief. User provided secret-management/project-binding tips; asked asynchronously whether to implement full brief or only deployment configuration/docs; scope reply pending. Current backend branch deployment-setup has no workflow/Catalyst config, while feature-deploy-application contains ci-cd.yml and catalyst.json. application.properties has user modifications; contents/secrets not printed or changed. Official Catalyst docs confirm .catalystrc project binding and CLI Development-only deployment with Production promotion via console. No implementation changes yet; preserve user's prior choice of Catalyst Production environment and keep runtime secrets out of committed config.
+
+### Branch-to-environment deployment clarification (31 October 2026)
+- Current Catalyst pipeline proposal triggers on main only. With ENABLE_DEPLOY=true, it deploys the backend to Catalyst Development, not Production. Existing GitHub Actions also deploys only Development on main when its gate is enabled.
+- Desired develop-to-Development, main-to-Production sequence is not configured. Catalyst Production requires a separate Development-to-Production promotion after verification. No code or deployment configuration changed for this question.
+
+### Requested develop-to-Development and main-to-Production setup (31 October 2026)
+- User asks how to configure branch-based backend releases. Inspected existing GitHub workflow: security/build on main; Development deploy only on main when CATALYST_CLI_DEPLOY_ENABLED=true, disabled by default because linked CLI deploy can replace Console runtime secrets. No catalyst-pipelines.yaml is committed locally.
+- Recommended develop push/PR checks and Development deploy after resolving secret-preserving deployment; main merge runs checks and authorizes a separate Catalyst Console Development-to-Production promotion of the same verified release. Catalyst CLI only deploys Development. Production promotion is not currently automated; protect main and confirm separate Production configuration/Neon credentials. No files or remote configuration changed this turn.
+
+### Release sequence deferred (31 October 2026)
+- User chose to first get the previously supplied Catalyst pipeline working, then set up develop-to-Development and main-to-Production promotion later. No branch or Production deployment changes made. Current proposed pipeline runs on main and can deploy only to Catalyst Development if enabled; production remains separate.
+
+### Catalyst pipeline image authentication error (31 October 2026)
+- User reports Catalyst rejects supplied YAML: Image node22 does not contain auth to pull from registry. Official Catalyst Pipelines image docs require auth.username/password for every explicitly named image, even public Docker Hub images. Prior YAML omitted this; correct image definitions with Docker Hub username and access token referenced via Catalyst pipeline global variables (for example DOCKERHUB_USERNAME and DOCKERHUB_TOKEN), including Maven image. Do not commit credentials. No repository YAML exists locally and no deployment or edits performed.
+
+### Docker setup clarification (31 October 2026)
+- User asks whether project has Docker setup. Searched checkout: no Dockerfile, compose file, or .dockerignore found. Backend Catalyst app-config.json uses Catalyst-managed Java 21 (javase), with catalyst.json pointing to InnovaserveBE. Docker Hub images in Catalyst Pipelines are only build/deploy runners, not the application packaging or AppSail runtime. No code changes.
+
+### Final Catalyst pipeline YAML prepared (31 October 2026)
+- Added untracked backend-root catalyst-pipelines.yaml. It runs on main, uses one Docker Hub-authenticated Maven/Temurin Java 21 image, Maven wrapper, and existing scripts/package-appsail.sh; creates an AppSail Console ZIP and uploads it to a Stratus bucket. Required Catalyst pipeline global variables: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, BUCKET_NAME. No Node image or Dockerfile needed.
+- Pipeline intentionally builds only; deployment remains a manual Catalyst Console upload because linked CLI redeploy can replace Console-only runtime secrets. Existing application.properties user edit untouched. No build/tests/pipeline execution run; Catalyst portal acceptance and bucket access still need user verification.
+
+### Pipeline execution versus live backend (31 October 2026)
+- User reports the new Catalyst pipeline executed and asks whether future main pushes update Production. Inspected committed YAML: only Java 21 build/package and Stratus ZIP upload, no AppSail deploy or Production promotion. Therefore main pushes create a fresh artifact but do not change the running Development or Production backend. The earlier manually uploaded ZIP and pipeline artifact match only if built from the same source revision and inputs; equivalence has not been verified. To release, upload the chosen ZIP to AppSail Development, verify it, then promote Development to Production in Catalyst Console. No files changed.
+
+### Pipeline purpose and missing CD stage (31 October 2026)
+- User challenged usefulness of build-only pipeline. Acknowledge prior YAML is CI only: it verifies/packages code and uploads artifact but never updates AppSail. Official Catalyst docs support AppSail deploy from Pipelines, and standalone CLI deployments keep runtime variables configured in Console. Actual intended next implementation is a deployment job that takes the built artifact to Catalyst Development while preserving secrets; Production remains an explicit Development-to-Production promotion. No file or cloud changes made in response to this question.
+
+### Automatic Catalyst Development pipeline prepared (31 October 2026)
+- User requested a real Dev deployment pipeline. Updated backend catalyst-pipelines.yaml on main checkout: build stage now uploads the staged JAR as well as Console ZIP; second authenticated Node 22 stage downloads the JAR, installs pinned Catalyst CLI, initializes an isolated project directory, and standalone-deploys InnovaserveBE as Java 21 to Catalyst Development. The isolated directory excludes repository app-config.json so Console-managed runtime secrets stay outside Git.
+- Required additional pipeline global variables: CATALYST_TOKEN, CATALYST_PROJECT_ID, CATALYST_ORG, CATALYST_DC (in); prior Docker Hub and Stratus variables remain. Production promotion is unchanged/manual. File is modified locally, not committed or pushed; live pipeline execution and runtime configuration have not been verified. Existing application.properties edit untouched. No tests run.
+
+### Catalyst pipeline variable sources clarified (31 October 2026)
+- Corrected assumption that BUCKET_NAME already exists: user sees no bucket variable. Current local YAML needs a Stratus bucket in the same Catalyst project and its exact name entered as a Pipeline Global Variable. Local .catalystrc identifies Innovaserve project ID 104505000000013051 and IN org ID 60093964795; DC is in. CLI token comes from catalyst token:generate; Docker Hub username and token are also required. Values should be entered in Pipeline Global Variables, never Git or chat. No source changes; pipeline remains uncommitted and unverified.
+
+### Docker Hub variables clarified (31 October 2026)
+- User asks whether DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are mandatory. Current local catalyst-pipelines.yaml explicitly uses Docker Hub Maven Java 21 and Node 22 images with auth references, so both are required for this YAML. Catalyst itself does not require Docker Hub credentials if using its default Ubuntu runner image; avoiding them would require reworking build/deploy steps to provision Java 21/Maven and Node/CLI and verifying that setup. No file changes or pipeline execution.
+
+### Docker Hub credential acquisition (31 October 2026)
+- User asks how to obtain DOCKERHUB_USERNAME and DOCKERHUB_TOKEN for current Catalyst pipeline. Docker Hub username is account Docker ID; create a personal access token in Docker Home → avatar → Account settings → Personal access tokens → Generate new token with Repo Public Read-only, then enter username/token as Catalyst Pipeline Global Variables. Do not use account password or share token in chat/Git. No code changes or pipeline run.
+
+### Next steps after Docker Hub pipeline variables (31 October 2026)
+- User set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN. Current local catalyst-pipelines.yaml still requires BUCKET_NAME plus CATALYST_TOKEN, CATALYST_PROJECT_ID=104505000000013051, CATALYST_ORG=60093964795, CATALYST_DC=in as Pipeline Global Variables. Then commit/push only catalyst-pipelines.yaml to main to trigger build and Development deployment; inspect pipeline logs and AppSail health. Other modified files (CHAT_CONTEXT.md and application.properties) must not be included by accident. No pipeline execution or code changes this turn.

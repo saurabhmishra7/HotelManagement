@@ -1,8 +1,9 @@
 # Catalyst Pipelines for the InnovaServe Java 21 backend.
-# Configure DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, and BUCKET_NAME as
-# pipeline Global Variables in the Catalyst Console. Do not commit tokens.
-# AppSail deployment remains a separate Console step until runtime secrets
-# can be preserved safely during an automated release.
+# Global Variables: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, BUCKET_NAME,
+# CATALYST_TOKEN, CATALYST_PROJECT_ID, CATALYST_ORG, CATALYST_DC.
+# Keep tokens in Catalyst Pipelines, never in Git. This deploys Development only.
+# The isolated standalone deploy does not use the repository's app-config.json;
+# AppSail runtime secrets remain configured in the Catalyst Console.
 version: 1.0
 
 pipeline-when:
@@ -20,6 +21,11 @@ images:
     auth:
       username: << env.DOCKERHUB_USERNAME >>
       password: << env.DOCKERHUB_TOKEN >>
+  node22:
+    image: node:22
+    auth:
+      username: << env.DOCKERHUB_USERNAME >>
+      password: << env.DOCKERHUB_TOKEN >>
 
 jobs:
   package-backend:
@@ -34,6 +40,35 @@ jobs:
           name: innovaserve-appsail-console.zip
           file: target/innovaserve-appsail-console.zip
           location: stratus://<< env.BUCKET_NAME >>/
+        - type: file
+          name: innovaserve.jar
+          file: target/appsail/innovaserve.jar
+          location: stratus://<< env.BUCKET_NAME >>/
+
+  deploy-development:
+    artifacts:
+      download:
+        - type: file
+          name: innovaserve.jar
+          file: /catalyst/innovaserve.jar
+          location: stratus://<< env.BUCKET_NAME >>/
+    steps:
+      - npm install --global zcatalyst-cli@1.29.1
+      - mkdir -p /catalyst/appsail-release/build
+      - cp /catalyst/innovaserve.jar /catalyst/appsail-release/build/innovaserve.jar
+      - >-
+        cd /catalyst/appsail-release &&
+        catalyst init -ni --project << env.CATALYST_PROJECT_ID >>
+        --org << env.CATALYST_ORG >> --dc << env.CATALYST_DC >>
+        --token << env.CATALYST_TOKEN >>
+      - >-
+        cd /catalyst/appsail-release &&
+        catalyst deploy appsail -ni --name InnovaserveBE
+        --build-path /catalyst/appsail-release/build
+        --stack java21 --platform javase
+        --command "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError -jar innovaserve.jar"
+        --project << env.CATALYST_PROJECT_ID >> --org << env.CATALYST_ORG >>
+        --dc << env.CATALYST_DC >> --token << env.CATALYST_TOKEN >>
 
 stages:
   - name: build
@@ -41,3 +76,8 @@ stages:
     image: java21
     jobs:
       - package-backend
+  - name: deploy-development
+    runner: backend-build
+    image: node22
+    jobs:
+      - deploy-development
