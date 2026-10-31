@@ -32,6 +32,7 @@ public class TenantProvisioningService {
   private final PlanRepository plans;
   private final SubscriptionRequestRepository subscriptionRequests;
   private final PublicSignupIntentRepository signupIntents;
+  private final DefaultStaffRoleSeeder defaultRoles;
 
   public TenantProvisioningService(
       TenantRepository tenants,
@@ -41,7 +42,8 @@ public class TenantProvisioningService {
       ModuleEntitlementService modules,
       PlanRepository plans,
       SubscriptionRequestRepository subscriptionRequests,
-      PublicSignupIntentRepository signupIntents) {
+      PublicSignupIntentRepository signupIntents,
+      DefaultStaffRoleSeeder defaultRoles) {
     this.tenants = tenants;
     this.roles = roles;
     this.users = users;
@@ -50,6 +52,7 @@ public class TenantProvisioningService {
     this.plans = plans;
     this.subscriptionRequests = subscriptionRequests;
     this.signupIntents = signupIntents;
+    this.defaultRoles = defaultRoles;
   }
 
   @Transactional
@@ -86,6 +89,7 @@ public class TenantProvisioningService {
     List<String> permissions =
         java.util.Arrays.stream(Permission.values()).map(Enum::name).sorted().toList();
     StaffRole ownerRole = roles.save(new StaffRole(tenant.getId(), "OWNER", permissions));
+    defaultRoles.ensureForTenant(tenant.getId());
     StaffUser owner =
         users.save(
             new StaffUser(

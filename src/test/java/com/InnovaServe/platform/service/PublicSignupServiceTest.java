@@ -48,7 +48,8 @@ class PublicSignupServiceTest {
     when(intents.lockById(intentId)).thenReturn(Optional.of(intent));
     when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
     service = new PublicSignupService(mock(PlatformSettingsRepository.class), plans, intents,
-        mock(TenantRepository.class), mock(StaffRoleRepository.class), users,
+        mock(TenantRepository.class), mock(StaffRoleRepository.class),
+        mock(com.InnovaServe.core.service.DefaultStaffRoleSeeder.class), users,
         mock(PasswordEncoder.class), mock(PlatformSubscriptionService.class),
         mock(RazorpayPaymentService.class), mock(PublicSignupRateLimiter.class),
         mock(com.InnovaServe.core.service.EmailSender.class), mock(org.springframework.beans.factory.ObjectProvider.class), Clock.systemUTC(), true, "http://localhost:3000/", transactionManager);

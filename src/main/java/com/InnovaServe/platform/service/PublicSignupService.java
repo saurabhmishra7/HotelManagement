@@ -10,6 +10,7 @@ import com.InnovaServe.core.security.Permission;
 import com.InnovaServe.core.service.AccountValidation;
 import com.InnovaServe.core.service.EmailSender;
 import com.InnovaServe.core.service.EmailDeliveryException;
+import com.InnovaServe.core.service.DefaultStaffRoleSeeder;
 import com.InnovaServe.platform.entity.PlatformSettings;
 import com.InnovaServe.platform.entity.PublicSignupIntent;
 import com.InnovaServe.platform.entity.Plan;
@@ -60,6 +61,7 @@ public class PublicSignupService {
   private final PublicSignupIntentRepository intents;
   private final TenantRepository tenants;
   private final StaffRoleRepository roles;
+  private final DefaultStaffRoleSeeder defaultRoles;
   private final StaffUserRepository users;
   private final PasswordEncoder passwords;
   private final PlatformSubscriptionService subscriptions;
@@ -78,6 +80,7 @@ public class PublicSignupService {
       PublicSignupIntentRepository intents,
       TenantRepository tenants,
       StaffRoleRepository roles,
+      DefaultStaffRoleSeeder defaultRoles,
       StaffUserRepository users,
       PasswordEncoder passwords,
       PlatformSubscriptionService subscriptions,
@@ -95,6 +98,7 @@ public class PublicSignupService {
     this.intents = intents;
     this.tenants = tenants;
     this.roles = roles;
+    this.defaultRoles = defaultRoles;
     this.users = users;
     this.passwords = passwords;
     this.subscriptions = subscriptions;
@@ -307,6 +311,7 @@ public class PublicSignupService {
     Tenant tenant = tenants.save(entity);
     List<String> permissions = Arrays.stream(Permission.values()).map(Enum::name).sorted().toList();
     StaffRole ownerRole = roles.save(new StaffRole(tenant.getId(), "OWNER", permissions));
+    defaultRoles.ensureForTenant(tenant.getId());
     users.save(new StaffUser(tenant.getId(), ownerName.trim(), ownerPhone.trim(),
         email, passwordHash, pinHash, ownerRole.getId()));
     return tenant;
