@@ -1,0 +1,12 @@
+{
+	"command": "java -jar demo-0.0.1-SNAPSHOT.jar",
+	"build_path": "target/demo-0.0.1-SNAPSHOT.jar",
+	"stack": "java8",
+	"env_variables": {},
+	"memory": 512,
+	"scripts": {
+		"preserve": "./mvnw clean install",
+		"predeploy": "./mvnw clean install"
+	},
+	"platform": "javase"
+}

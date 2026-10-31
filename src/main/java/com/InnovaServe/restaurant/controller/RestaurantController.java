@@ -55,13 +55,13 @@ public class RestaurantController {
 
   @PostMapping("/menu-categories")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
-  public MenuCategory createCategory(@RequestBody CategoryRequest r) {
+  public MenuCategory createCategory(@jakarta.validation.Valid @RequestBody CategoryRequest r) {
     return service.addCategory(r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
   }
 
   @PatchMapping("/menu-categories/{id}")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
-  public MenuCategory updateCategory(@PathVariable UUID id, @RequestBody CategoryRequest r) {
+  public MenuCategory updateCategory(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody CategoryRequest r) {
     return service.updateCategory(id, r.name(), r.sortOrder() == null ? 0 : r.sortOrder());
   }
 
@@ -77,7 +77,7 @@ public class RestaurantController {
 
   @PostMapping("/menu-items/{id}/recipe")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE') and hasAuthority('PERM_INVENTORY_MANAGE')")
-  public Map<String, Object> saveRecipe(@PathVariable UUID id, @RequestBody RecipeRequest request) {
+  public Map<String, Object> saveRecipe(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody RecipeRequest request) {
     List<com.InnovaServe.inventory.service.InventoryService.IngredientRequest> ingredients = request.ingredients() == null ? List.of() : request.ingredients().stream()
         .map(row -> new com.InnovaServe.inventory.service.InventoryService.IngredientRequest(row.inventoryItemId(), row.quantityRequired())).toList();
     return service.saveRecipe(id, ingredients);
@@ -93,7 +93,7 @@ public class RestaurantController {
 
   @PostMapping("/menu-items")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
-  public MenuItem createItem(@RequestBody MenuItemRequest r) {
+  public MenuItem createItem(@jakarta.validation.Valid @RequestBody MenuItemRequest r) {
     return service.addItem(
         r.categoryId(),
         r.name(),
@@ -108,7 +108,7 @@ public class RestaurantController {
 
   @PatchMapping("/menu-items/{id}")
   @PreAuthorize("hasAuthority('PERM_MENU_MANAGE')")
-  public MenuItem updateItem(@PathVariable UUID id, @RequestBody MenuItemUpdate r) {
+  public MenuItem updateItem(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody MenuItemUpdate r) {
     return service.updateItem(
         id,
         r.categoryId(),
@@ -151,13 +151,13 @@ public class RestaurantController {
 
   @PostMapping("/dining-tables")
   @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
-  public DiningTable createTable(@RequestBody DiningTableRequest r) {
+  public DiningTable createTable(@jakarta.validation.Valid @RequestBody DiningTableRequest r) {
     return service.addTable(r.tableNumber(), r.section(), r.station());
   }
 
   @PatchMapping("/dining-tables/{id}")
   @PreAuthorize("hasAuthority('PERM_TABLE_MANAGE')")
-  public DiningTable updateTable(@PathVariable UUID id, @RequestBody DiningTableRequest r) {
+  public DiningTable updateTable(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody DiningTableRequest r) {
     return service.updateTable(id, r.tableNumber(), r.section(), r.station());
   }
 
@@ -173,10 +173,16 @@ public class RestaurantController {
     return service.markTableReady(id);
   }
 
+  @PostMapping("/dining-tables/{id}/vacant")
+  @PreAuthorize("hasAuthority('PERM_TABLE_CLEAR')")
+  public DiningTable markTableVacant(@PathVariable UUID id) {
+    return service.markTableVacant(id);
+  }
+
   @PostMapping("/orders")
   @ResponseStatus(HttpStatus.CREATED)
   @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
-  public Map<String, Object> openOrder(@RequestBody OpenOrder r) {
+  public Map<String, Object> openOrder(@jakarta.validation.Valid @RequestBody OpenOrder r) {
     RestaurantOrder o = service.openOrder(r.orderType(), r.tableId(), r.roomNumber());
     return Map.of("order_id", o.getId());
   }
@@ -189,7 +195,7 @@ public class RestaurantController {
 
   @PostMapping("/orders/{id}/items")
   @PreAuthorize("hasAuthority('PERM_ORDER_CREATE')")
-  public Map<String, Object> addItems(@PathVariable UUID id, @RequestBody ItemsRequest r) {
+  public Map<String, Object> addItems(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody ItemsRequest r) {
     return service.addItems(
         id,
         r.items().stream()
@@ -217,13 +223,13 @@ public class RestaurantController {
 
   @PostMapping("/orders/{id}/bill-to-room")
   @PreAuthorize("hasAuthority('PERM_BILL_CREATE') and hasAuthority('PERM_BILL_SETTLE')")
-  public Map<String, String> billToRoom(@PathVariable UUID id, @RequestBody SettleRequest r) {
+  public Map<String, String> billToRoom(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody SettleRequest r) {
     return Map.of("status", service.billToRoom(id, r.roomNumber(), r.guestPhone()));
   }
 
   @PostMapping("/bills/{id}/settle")
   @PreAuthorize("hasAuthority('PERM_BILL_SETTLE')")
-  public Map<String, String> settle(@PathVariable UUID id, @RequestBody SettleRequest r) {
+  public Map<String, String> settle(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody SettleRequest r) {
     return Map.of("status", service.settleBill(id, r.settlementMode(), r.roomNumber(), r.guestPhone()));
   }
 

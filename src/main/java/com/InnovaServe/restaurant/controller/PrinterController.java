@@ -18,13 +18,13 @@ public class PrinterController {
   public Map<String,Object> list() { return printers.list(); }
   @PostMapping("/printer-devices")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
-  public Map<String,Object> register(@RequestBody Map<String,Object> input) { return printers.register(input); }
+  public Map<String,Object> register(@jakarta.validation.Valid @RequestBody Map<String,Object> input) { return printers.register(input); }
   @PatchMapping("/printer-devices/{id}")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
-  public Map<String,Object> update(@PathVariable UUID id,@RequestBody Map<String,Object> input) { printers.update(id,input); return Map.of("saved",true); }
+  public Map<String,Object> update(@PathVariable UUID id,@jakarta.validation.Valid @RequestBody Map<String,Object> input) { printers.update(id,input); return Map.of("saved",true); }
   @PatchMapping("/printer-devices/routes/{purpose}")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
-  public Map<String,Object> route(@PathVariable String purpose,@RequestBody Map<String,UUID> input) { printers.route(purpose,input.get("device_id")); return Map.of("saved",true); }
+  public Map<String,Object> route(@PathVariable String purpose,@jakarta.validation.Valid @RequestBody Map<String,UUID> input) { printers.route(purpose,input.get("device_id")); return Map.of("saved",true); }
   @PostMapping("/printer-devices/{id}/tested")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
   public Map<String,Object> tested(@PathVariable UUID id) { printers.tested(id); return Map.of("saved",true); }
@@ -37,12 +37,12 @@ public class PrinterController {
   }
   @PostMapping("/printer-devices/{id}/jobs/{jobId}/status")
   public Map<String,Object> status(@PathVariable UUID id,@PathVariable UUID jobId,
-      @RequestHeader(value="X-Print-Device-Key",required=false) String key,@RequestBody Map<String,Object> body) {
+      @RequestHeader(value="X-Print-Device-Key",required=false) String key,@jakarta.validation.Valid @RequestBody Map<String,Object> body) {
     printers.acknowledge(id,jobId,key,body); return Map.of("saved",true);
   }
   @PostMapping("/printer-devices/jobs/{jobId}/review")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
-  public Map<String,Object> review(@PathVariable UUID jobId,@RequestBody Map<String,Boolean> input) {
+  public Map<String,Object> review(@PathVariable UUID jobId,@jakarta.validation.Valid @RequestBody Map<String,Boolean> input) {
     printers.review(jobId,Boolean.TRUE.equals(input.get("retry"))); return Map.of("saved",true);
   }
   @GetMapping("/printer-compatibility")
@@ -54,14 +54,14 @@ public class PrinterController {
   public Map<String,Object> workflow() { return Map.of("serviceMode",profiles.profile().restaurantServiceMode()); }
   @PostMapping("/printer-devices/invoices/{id}/print")
   @PreAuthorize("hasAnyAuthority('PERM_BILLING_READ','PERM_BILL_CREATE')")
-  public Object receipt(@PathVariable UUID id,@RequestBody Map<String,UUID> body) {
+  public Object receipt(@PathVariable UUID id,@jakarta.validation.Valid @RequestBody Map<String,UUID> body) {
     UUID request=body.get("request_id");
     if(request==null) throw new IllegalArgumentException("A print request ID is required");
     return printers.receipt(id,request);
   }
   @PatchMapping("/settings/restaurant-workflow")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
-  public Object workflow(@RequestBody TenantProfileService.RestaurantSettings settings) {
+  public Object workflow(@jakarta.validation.Valid @RequestBody TenantProfileService.RestaurantSettings settings) {
     String mode="thermal_only".equals(settings.serviceMode())?"thermal_printer":settings.serviceMode();
     return profiles.updateRestaurantSettings(new TenantProfileService.RestaurantSettings(mode));
   }

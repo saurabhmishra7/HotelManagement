@@ -52,14 +52,20 @@ public class DiningTable extends TenantEntity {
   }
 
   public void markDirty() {
-    if (!"billed".equals(status))
-      throw new IllegalStateException("Only billed tables can be marked dirty");
+    if (!"billed".equals(status) && !"free".equals(status))
+      throw new IllegalStateException("Only vacant or billed tables can be marked dirty");
     status = "dirty";
   }
 
   public void markReady() {
     if (!"dirty".equals(status))
       throw new IllegalStateException("Only dirty tables can be marked ready");
+    status = "free";
+  }
+
+  public void markVacant() {
+    if (!"occupied".equals(status))
+      throw new IllegalStateException("Only occupied tables can be marked vacant");
     status = "free";
   }
 }

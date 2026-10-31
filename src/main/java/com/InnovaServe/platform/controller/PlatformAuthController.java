@@ -19,7 +19,7 @@ public class PlatformAuthController {
   }
 
   @PostMapping("/login")
-  public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+  public ResponseEntity<?> login(@jakarta.validation.Valid @RequestBody LoginRequest request) {
     return auth
         .login(request.email(), request.password())
         .<ResponseEntity<?>>map(ResponseEntity::ok)

@@ -20,15 +20,15 @@ public class InventoryController {
   @GetMapping("/items") @PreAuthorize("hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE')")
   public List<InventoryItem> items(@RequestParam(name="usage_type", required=false) String usageType, @RequestParam(required=false) Boolean active) { return service.items(usageType, active); }
   @PostMapping("/items") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
-  public InventoryItem create(@RequestBody ItemRequest r) { return service.createItem(r.name(), r.unit(), r.usageType(), r.reorderThreshold()); }
+  public InventoryItem create(@jakarta.validation.Valid @RequestBody ItemRequest r) { return service.createItem(r.name(), r.unit(), r.usageType(), r.reorderThreshold()); }
   @PatchMapping("/items/{id}") @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
-  public InventoryItem update(@PathVariable UUID id, @RequestBody ItemRequest r) { return service.updateItem(id, r.name(), r.unit(), r.usageType(), r.reorderThreshold(), r.active()); }
+  public InventoryItem update(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody ItemRequest r) { return service.updateItem(id, r.name(), r.unit(), r.usageType(), r.reorderThreshold(), r.active()); }
   @DeleteMapping("/items/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
   public void delete(@PathVariable UUID id) { service.deleteItem(id); }
   @PostMapping("/items/{id}/purchase") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
-  public Map<String,Object> purchase(@PathVariable UUID id, @RequestBody PurchaseRequest r) { return Map.of("purchase_result", service.purchase(id, r.quantity(), r.unitCost(), r.vendorName(), r.paymentMode())); }
+  public Map<String,Object> purchase(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody PurchaseRequest r) { return Map.of("purchase_result", service.purchase(id, r.quantity(), r.unitCost(), r.vendorName(), r.paymentMode())); }
   @PostMapping("/items/{id}/adjust") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
-  public Map<String,Object> adjust(@PathVariable UUID id, @RequestBody AdjustRequest r) { return Map.of("consumption", service.adjust(id, r.quantity(), r.note())); }
+  public Map<String,Object> adjust(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody AdjustRequest r) { return Map.of("consumption", service.adjust(id, r.quantity(), r.note())); }
   @GetMapping("/items/{id}/history") @PreAuthorize("hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE')")
   public List<Map<String,Object>> history(@PathVariable UUID id) { return service.history(id); }
   @GetMapping("/low-stock") @PreAuthorize("hasAuthority('PERM_INVENTORY_READ') or hasAuthority('PERM_INVENTORY_MANAGE')")

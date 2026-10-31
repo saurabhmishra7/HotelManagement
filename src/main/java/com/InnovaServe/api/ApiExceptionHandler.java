@@ -17,6 +17,17 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 public class ApiExceptionHandler {
   private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+  @ExceptionHandler({org.springframework.web.bind.MethodArgumentNotValidException.class,
+      jakarta.validation.ConstraintViolationException.class,
+      org.springframework.web.method.annotation.HandlerMethodValidationException.class,
+      org.springframework.http.converter.HttpMessageNotReadableException.class,
+      org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+      org.springframework.web.bind.MissingServletRequestParameterException.class})
+  public ResponseEntity<?> invalidInput(Exception ex) {
+    return ResponseEntity.badRequest().body(Map.of("error", "InvalidRequest", "message",
+        "Check the required fields, values and request format", "details", Map.of()));
+  }
+
   @ExceptionHandler(ModuleNotEntitledException.class)
   public ResponseEntity<?> moduleNotEntitled(ModuleNotEntitledException ex) {
     return ResponseEntity.status(403)
@@ -136,6 +147,7 @@ public class ApiExceptionHandler {
 
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<?> constraint(DataIntegrityViolationException ex) {
+    log.error("Database constraint rejected request", ex);
     return ResponseEntity.status(409)
         .body(
             Map.of(

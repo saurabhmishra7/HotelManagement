@@ -5,6 +5,8 @@ import com.InnovaServe.core.service.BillingService;
 import com.InnovaServe.core.service.CoreReferenceService;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
 import java.time.LocalDate;
 import java.util.*;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,7 +25,7 @@ public class BillingController {
 
   @PostMapping("/qr-codes")
   @PreAuthorize("hasAuthority('PERM_QR_CODE_MANAGE')")
-  public QRCode createQRCode(@RequestBody QRCodeRequest r) {
+  public QRCode createQRCode(@jakarta.validation.Valid @RequestBody QRCodeRequest r) {
     return references.createQRCode(r.targetType(), r.targetId());
   }
 
@@ -41,7 +43,7 @@ public class BillingController {
 
   @PostMapping("/credit-notes")
   @PreAuthorize("hasAuthority('PERM_CREDIT_NOTE_CREATE')")
-  public CreditNote createCreditNote(@RequestBody CreditNoteRequest r) {
+  public CreditNote createCreditNote(@jakarta.validation.Valid @RequestBody CreditNoteRequest r) {
     return references.createCreditNote(r.originalInvoiceId(), r.reason(), r.amount());
   }
 
@@ -67,7 +69,7 @@ public class BillingController {
 
   @PostMapping("/tax-rules")
   @PreAuthorize("hasAuthority('PERM_TAX_MANAGE')")
-  public TaxRule addTax(@RequestBody TaxRequest r) {
+  public TaxRule addTax(@jakarta.validation.Valid @RequestBody TaxRequest r) {
     return service.addTax(
         r.name(),
         r.appliesTo(),
@@ -79,13 +81,13 @@ public class BillingController {
 
   @PostMapping("/tax-rules/{id}/supersede")
   @PreAuthorize("hasAuthority('PERM_TAX_MANAGE')")
-  public TaxRule supersede(@PathVariable UUID id, @RequestBody SupersedeRequest r) {
+  public TaxRule supersede(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody SupersedeRequest r) {
     return service.supersede(id, r.effectiveTo());
   }
 
   @PostMapping("/accounts")
   @PreAuthorize("hasAuthority('PERM_ACCOUNT_MANAGE')")
-  public Map<String, Object> openAccount(@RequestBody AccountRequest r) {
+  public Map<String, Object> openAccount(@jakarta.validation.Valid @RequestBody AccountRequest r) {
     Account a = service.openAccount(r.openedByModule(), r.linkedEntityType(), r.linkedEntityId());
     return Map.of("account_id", a.getId(), "status", a.getStatus());
   }
@@ -105,13 +107,13 @@ public class BillingController {
   @PostMapping("/accounts/{id}/settle-now")
   @PreAuthorize("hasAuthority('PERM_BILL_SETTLE')")
   public BillingService.SettlementResult settleAccountNow(
-      @PathVariable UUID id, @RequestBody SettleAccountRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody SettleAccountRequest request) {
     return service.settleOutstandingAccount(id, request.mode());
   }
 
   @PostMapping("/accounts/{id}/charges")
   @PreAuthorize("hasAuthority('PERM_ACCOUNT_MANAGE')")
-  public Map<String, Boolean> charge(@PathVariable UUID id, @RequestBody InvoiceRef r) {
+  public Map<String, Boolean> charge(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody InvoiceRef r) {
     service.postInvoiceToAccount(id, r.invoiceId());
     return Map.of("success", true);
   }
@@ -125,7 +127,7 @@ public class BillingController {
 
   @PostMapping("/invoices")
   @PreAuthorize("hasAuthority('PERM_BILLING_CREATE')")
-  public Map<String, Object> createInvoice(@RequestBody InvoiceRequest r) {
+  public Map<String, Object> createInvoice(@jakarta.validation.Valid @RequestBody InvoiceRequest r) {
     var result =
         service.createInvoice(
             new BillingService.NewInvoice(
@@ -168,7 +170,7 @@ public class BillingController {
 
   @PostMapping("/payments")
   @PreAuthorize("hasAuthority('PERM_PAYMENT_RECORD')")
-  public Map<String, Object> payment(@RequestBody PaymentRequest r) {
+  public Map<String, Object> payment(@jakarta.validation.Valid @RequestBody PaymentRequest r) {
     var result = service.payment(r.invoiceId(), r.mode(), r.amount(), r.reference());
     return Map.of("payment_id", result.payment().getId(), "overpayment", result.overpayment());
   }
@@ -194,25 +196,25 @@ public class BillingController {
       @JsonProperty("linked_entity_type") String linkedEntityType,
       @JsonProperty("linked_entity_id") UUID linkedEntityId) {}
 
-  public record InvoiceRef(@JsonProperty("invoice_id") UUID invoiceId) {}
+  public record InvoiceRef(@NotNull @JsonProperty("invoice_id") UUID invoiceId) {}
 
   public record InvoiceRequest(
       @JsonProperty("account_id") UUID accountId,
       @JsonProperty("customer_id") UUID customerId,
       @JsonProperty("source_module") String sourceModule,
-      List<LineRequest> lineItems) {}
+      @NotEmpty @Size(max=500) List<@Valid LineRequest> lineItems) {}
 
   public record LineRequest(
-      String description,
-      BigDecimal quantity,
-      @JsonProperty("unit_price") BigDecimal unitPrice,
+      @NotBlank @Size(max=200) String description,
+      @NotNull @DecimalMin("0.01") BigDecimal quantity,
+      @NotNull @DecimalMin("0") @JsonProperty("unit_price") BigDecimal unitPrice,
       @JsonProperty("tax_rule_id") UUID taxRuleId) {}
 
   public record PaymentRequest(
-      @JsonProperty("invoice_id") UUID invoiceId,
-      String mode,
-      BigDecimal amount,
-      String reference) {}
+      @NotNull @JsonProperty("invoice_id") UUID invoiceId,
+      @NotBlank @Pattern(regexp="cash|card|upi|account") String mode,
+      @NotNull @DecimalMin("0.01") @Digits(integer=8, fraction=2) BigDecimal amount,
+      @Size(max=100) String reference) {}
 
   public record SettleAccountRequest(String mode) {}
 
@@ -221,7 +223,7 @@ public class BillingController {
       @JsonProperty("target_id") UUID targetId) {}
 
   public record CreditNoteRequest(
-      @JsonProperty("original_invoice_id") UUID originalInvoiceId,
-      String reason,
-      BigDecimal amount) {}
+      @NotNull @JsonProperty("original_invoice_id") UUID originalInvoiceId,
+      @NotBlank @Size(max=2000) String reason,
+      @NotNull @DecimalMin("0.01") @Digits(integer=8, fraction=2) BigDecimal amount) {}
 }

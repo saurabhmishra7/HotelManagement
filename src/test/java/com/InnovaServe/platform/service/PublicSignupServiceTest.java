@@ -51,7 +51,7 @@ class PublicSignupServiceTest {
         mock(TenantRepository.class), mock(StaffRoleRepository.class), users,
         mock(PasswordEncoder.class), mock(PlatformSubscriptionService.class),
         mock(RazorpayPaymentService.class), mock(PublicSignupRateLimiter.class),
-        mock(EmailVerificationService.class), Clock.systemUTC(), true, transactionManager);
+        mock(com.InnovaServe.core.service.EmailSender.class), mock(org.springframework.beans.factory.ObjectProvider.class), Clock.systemUTC(), true, "http://localhost:3000/", transactionManager);
   }
 
   @Test
@@ -60,7 +60,7 @@ class PublicSignupServiceTest {
     IllegalStateException error = assertThrows(IllegalStateException.class,
         () -> service.completeDemoPayment(intentId));
     assertEquals("Selected plan is no longer active", error.getMessage());
-    verify(intents).existsByOwnerEmailIgnoreCaseAndStatusAndIdNot(email, "pending", intentId);
+    verify(intents).existsByOwnerEmailIgnoreCaseAndStatusInAndIdNotAndExpiresAtAfter(org.mockito.ArgumentMatchers.eq(email), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(intentId), org.mockito.ArgumentMatchers.any());
   }
 
   @Test

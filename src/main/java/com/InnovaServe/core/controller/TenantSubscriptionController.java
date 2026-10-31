@@ -32,7 +32,7 @@ public class TenantSubscriptionController {
 
   @PostMapping("/requests")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_REQUEST')")
-  public Map<String, Object> request(@RequestBody Request body) {
+  public Map<String, Object> request(@jakarta.validation.Valid @RequestBody Request body) {
     return service.request(body.requestType(), body.planId(), body.message());
   }
 
@@ -44,26 +44,26 @@ public class TenantSubscriptionController {
 
   @PostMapping("/activate")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_READ')")
-  public Map<String, Object> activate(@RequestBody PlanRequest body) {
+  public Map<String, Object> activate(@jakarta.validation.Valid @RequestBody PlanRequest body) {
     return checkouts.begin("activate", body.planId());
   }
 
   @PostMapping("/schedule")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_READ')")
-  public Map<String, Object> schedule(@RequestBody PlanRequest body) {
+  public Map<String, Object> schedule(@jakarta.validation.Valid @RequestBody PlanRequest body) {
     return checkouts.begin("schedule", body.planId());
   }
 
   @PostMapping("/checkout/complete")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_READ')")
   public Map<String, Object> completeCheckout(
-      @RequestBody TenantSubscriptionCheckoutService.PaymentCompletion body) {
+      @jakarta.validation.Valid @RequestBody TenantSubscriptionCheckoutService.PaymentCompletion body) {
     return checkouts.complete(body);
   }
 
   @PostMapping("/checkout/demo-complete")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_READ')")
-  public Map<String, Object> completeDemoCheckout(@RequestBody DemoCompletionRequest body) {
+  public Map<String, Object> completeDemoCheckout(@jakarta.validation.Valid @RequestBody DemoCompletionRequest body) {
     return checkouts.completeDemoPayment(body.checkoutId());
   }
 

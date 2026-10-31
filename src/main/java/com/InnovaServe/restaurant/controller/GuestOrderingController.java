@@ -30,7 +30,7 @@ public class GuestOrderingController {
 
   @PostMapping("/session")
   public Map<String, Object> startSession(@PathVariable String token,
-      @RequestBody(required = false) SessionRequest request) {
+      @jakarta.validation.Valid @RequestBody(required = false) SessionRequest request) {
     GuestQrSessionService.Started started = sessions.start(token, request == null ? null : request.sessionToken());
     Map<String, Object> response = sessionView(started.session());
     response.put("session_token", started.token());
@@ -67,7 +67,7 @@ public class GuestOrderingController {
   @PostMapping("/orders")
   public Map<String, Object> submitOrder(
       @PathVariable String token, @RequestHeader("X-Guest-Session") String sessionToken,
-      @RequestBody GuestOrderRequest request) {
+      @jakarta.validation.Valid @RequestBody GuestOrderRequest request) {
     GuestQrSession session = sessions.requireActive(token, sessionToken);
     if (request.items() == null)
       throw new IllegalArgumentException("items is required");
@@ -85,7 +85,7 @@ public class GuestOrderingController {
 
   @PostMapping("/service-requests")
   public RoomServiceRequestService.View serviceRequest(@PathVariable String token,
-      @RequestHeader("X-Guest-Session") String sessionToken, @RequestBody ServiceRequest request) {
+      @RequestHeader("X-Guest-Session") String sessionToken, @jakarta.validation.Valid @RequestBody ServiceRequest request) {
     GuestQrSession session = sessions.requireActive(token, sessionToken);
     return guestOrdering.submitServiceRequest(token, session.getId(), request.serviceType(), request.notes());
   }
@@ -110,7 +110,7 @@ public class GuestOrderingController {
   @PostMapping("/orders/{orderId}/request-bill")
   public Map<String, Object> requestBill(
       @PathVariable String token, @RequestHeader("X-Guest-Session") String sessionToken,
-      @PathVariable UUID orderId, @RequestBody(required = false) BillRequest request) {
+      @PathVariable UUID orderId, @jakarta.validation.Valid @RequestBody(required = false) BillRequest request) {
     GuestQrSession session = sessions.requireActive(token, sessionToken);
     List<DishFeedbackService.Rating> ratings = request == null || request.ratings() == null
         ? null : request.ratings().stream().map(row -> row == null ? null

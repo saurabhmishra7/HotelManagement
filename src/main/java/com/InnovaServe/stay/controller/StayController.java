@@ -45,7 +45,7 @@ public class StayController {
 
   @PostMapping("/room-types/{type}/par-list")
   @PreAuthorize("hasAuthority('PERM_INVENTORY_MANAGE')")
-  public List<Map<String, Object>> saveRoomParList(@PathVariable String type, @RequestBody RoomParRequest request) {
+  public List<Map<String, Object>> saveRoomParList(@PathVariable String type, @jakarta.validation.Valid @RequestBody RoomParRequest request) {
     List<InventoryService.IngredientRequest> rows = request.items() == null ? List.of() : request.items().stream()
         .map(row -> new InventoryService.IngredientRequest(row.inventoryItemId(), row.quantityPerClean())).toList();
     return inventory.saveRoomParList(type, rows);
@@ -53,14 +53,14 @@ public class StayController {
 
   @PostMapping("/rooms")
   @PreAuthorize("hasAuthority('PERM_ROOM_MANAGE')")
-  public Room createRoom(@RequestBody RoomRequest request) {
+  public Room createRoom(@jakarta.validation.Valid @RequestBody RoomRequest request) {
     return service.createRoom(
         request.roomNumber(), request.roomType(), request.floor(), request.baseTariff());
   }
 
   @PatchMapping("/rooms/{id}")
   @PreAuthorize("hasAuthority('PERM_ROOM_MANAGE')")
-  public Room updateRoom(@PathVariable UUID id, @RequestBody RoomRequest request) {
+  public Room updateRoom(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody RoomRequest request) {
     return service.updateRoom(
         id, request.roomNumber(), request.roomType(), request.floor(), request.baseTariff());
   }
@@ -73,7 +73,7 @@ public class StayController {
 
   @PatchMapping("/rooms/{id}/status")
   @PreAuthorize("hasAuthority('PERM_HOUSEKEEPING_UPDATE')")
-  public Room roomStatus(@PathVariable UUID id, @RequestBody StatusRequest r) {
+  public Room roomStatus(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody StatusRequest r) {
     if (!Set.of("vacant", "occupied", "dirty", "clean").contains(r.status()))
       throw new IllegalArgumentException("Invalid room status");
     return service.setRoomStatus(id, r.status());
@@ -81,7 +81,7 @@ public class StayController {
 
   @PostMapping("/stays")
   @PreAuthorize("hasAuthority('PERM_STAY_CHECKIN')")
-  public Map<String, Object> checkIn(@RequestBody StayService.CheckIn request) {
+  public Map<String, Object> checkIn(@jakarta.validation.Valid @RequestBody StayService.CheckIn request) {
     Stay s = service.checkIn(request);
     return Map.of("stay_id", s.getId(), "account_id", s.getAccountId());
   }
@@ -102,21 +102,21 @@ public class StayController {
   @PatchMapping("/stays/{id}")
   @PreAuthorize("hasAuthority('PERM_STAY_MANAGE')")
   public Map<String, Object> updateStay(
-      @PathVariable UUID id, @RequestBody StayService.StayUpdate request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody StayService.StayUpdate request) {
     return service.updateStay(id, request);
   }
 
   @PatchMapping("/stays/{id}/room")
   @PreAuthorize("hasAuthority('PERM_STAY_MANAGE')")
   public Map<String, Object> changeRoom(
-      @PathVariable UUID id, @RequestBody ChangeRoomRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ChangeRoomRequest request) {
     return service.changeRoom(id, request.roomId());
   }
 
   @PostMapping("/stays/{id}/charges")
   @ResponseStatus(HttpStatus.CREATED)
   @PreAuthorize("hasAuthority('PERM_STAY_CHARGE')")
-  public StayCharge charge(@PathVariable UUID id, @RequestBody ChargeRequest r) {
+  public StayCharge charge(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody ChargeRequest r) {
     return service.addCharge(id, r.description(), r.amount(), r.quantity() == null ? 1 : r.quantity());
   }
 
@@ -141,7 +141,7 @@ public class StayController {
 
   @PostMapping("/stays/{id}/form-c/submit")
   @PreAuthorize("hasAuthority('PERM_FORM_C_SUBMIT')")
-  public FormCSubmission submit(@PathVariable UUID id, @RequestBody FormCRequest r) {
+  public FormCSubmission submit(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody FormCRequest r) {
     return service.submitFormC(id, r.referenceNumber());
   }
 

@@ -36,6 +36,9 @@ public class PlatformSecurityConfiguration {
     return http.securityMatcher("/api/v1/platform/**")
         .csrf(csrf -> csrf.disable())
         .cors(Customizer.withDefaults())
+        .headers(h -> h.frameOptions(f -> f.deny())
+            .contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'"))
+            .httpStrictTransportSecurity(t -> t.includeSubDomains(true).maxAgeInSeconds(31536000)))
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
@@ -62,8 +65,9 @@ public class PlatformSecurityConfiguration {
   }
 
   @Bean
-  CorsConfigurationSource platformCorsConfigurationSource(
-      @Value("${app.platform.cors.allowed-origins:http://localhost:5174}") String origins) {
+  UrlBasedCorsConfigurationSource corsConfigurationSource(
+      @Value("${app.platform.cors.allowed-origins:}") String origins,
+      @Value("${app.cors.allowed-origins:}") String tenantOrigins) {
     CorsConfiguration configuration = new CorsConfiguration();
     configuration.setAllowedOrigins(
         Arrays.stream(origins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList());
@@ -74,6 +78,20 @@ public class PlatformSecurityConfiguration {
     configuration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/api/v1/platform/**", configuration);
+    CorsConfiguration tenantConfiguration = new CorsConfiguration(configuration);
+    tenantConfiguration.setAllowedOrigins(Arrays.stream(tenantOrigins.split(",")).map(String::trim).filter(v -> !v.isEmpty()).toList());
+    tenantConfiguration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+    tenantConfiguration.setAllowedHeaders(
+        List.of(
+            "Authorization",
+            "Content-Type",
+            "X-Tenant-Id",
+            "X-Guest-Session",
+            "X-Device-Key",
+            "X-Provisioning-Key",
+            "Cache-Control",
+            "Pragma"));
+    source.registerCorsConfiguration("/**", tenantConfiguration);
     return source;
   }
 }

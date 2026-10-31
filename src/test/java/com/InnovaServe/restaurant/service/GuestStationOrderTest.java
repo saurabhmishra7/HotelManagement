@@ -36,7 +36,7 @@ class GuestStationOrderTest {
       mock(KotBatchRepository.class), barFeature, tables);
   private final GuestOrderingService service = new GuestOrderingService(qr, tenants, categories,
       menu, tables, orders, bills, orderItems, null, null, entitlements,
-      mock(NotificationService.class), null, null, null, stations);
+      mock(NotificationService.class), null, null, null, stations, mock(DishFeedbackService.class));
   private final DiningTable table = new DiningTable(tenantId, "B1", "Main");
   private final List<RestaurantOrder> savedOrders = new ArrayList<>();
   private MenuItem food;

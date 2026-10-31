@@ -31,14 +31,14 @@ public class PlatformAdminController {
   }
 
   @PostMapping
-  public Map<String, Object> create(@RequestBody CreateAdminRequest request) {
+  public Map<String, Object> create(@jakarta.validation.Valid @RequestBody CreateAdminRequest request) {
     return admins.create(
         request.name(), request.email(), request.password(), request.role(), currentAdminId());
   }
 
   @PatchMapping("/{id}")
   public Map<String, Object> update(
-      @PathVariable UUID id, @RequestBody UpdateAdminRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody UpdateAdminRequest request) {
     return admins.update(id, request.role(), request.active(), currentAdminId());
   }
 

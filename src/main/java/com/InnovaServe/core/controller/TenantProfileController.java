@@ -24,47 +24,47 @@ public class TenantProfileController {
 
   @PutMapping
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
-  public TenantProfileService.Profile update(@RequestBody TenantProfileService.Details request) {
+  public TenantProfileService.Profile update(@jakarta.validation.Valid @RequestBody TenantProfileService.Details request) {
     return service.updateDetails(request);
   }
 
   @PutMapping("/rules")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
-  public TenantProfileService.Profile rules(@RequestBody TenantProfileService.Rules request) {
+  public TenantProfileService.Profile rules(@jakarta.validation.Valid @RequestBody TenantProfileService.Rules request) {
     return service.updateRules(request);
   }
 
   @PutMapping("/restaurant-settings")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile restaurantSettings(
-      @RequestBody TenantProfileService.RestaurantSettings request) {
+      @jakarta.validation.Valid @RequestBody TenantProfileService.RestaurantSettings request) {
     return service.updateRestaurantSettings(request);
   }
 
   @PutMapping("/appearance")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile appearance(
-      @RequestBody TenantProfileService.Appearance request) {
+      @jakarta.validation.Valid @RequestBody TenantProfileService.Appearance request) {
     return service.updateAppearance(request);
   }
 
   @PutMapping("/guest-appearance")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile guestAppearance(
-      @RequestBody TenantProfileService.GuestAppearance request) {
+      @jakarta.validation.Valid @RequestBody TenantProfileService.GuestAppearance request) {
     return service.updateGuestAppearance(request);
   }
 
   @PostMapping("/charge-presets")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
-  public TenantProfileService.Profile addPreset(@RequestBody TenantProfileService.PresetInput request) {
+  public TenantProfileService.Profile addPreset(@jakarta.validation.Valid @RequestBody TenantProfileService.PresetInput request) {
     return service.savePreset(null, request);
   }
 
   @PutMapping("/charge-presets/{id}")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile editPreset(@PathVariable UUID id,
-      @RequestBody TenantProfileService.PresetInput request) {
+      @jakarta.validation.Valid @RequestBody TenantProfileService.PresetInput request) {
     return service.savePreset(id, request);
   }
 
@@ -74,14 +74,14 @@ public class TenantProfileController {
 
   @PostMapping("/stations")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
-  public TenantProfileService.Profile addStation(@RequestBody TenantProfileService.StationInput request) {
+  public TenantProfileService.Profile addStation(@jakarta.validation.Valid @RequestBody TenantProfileService.StationInput request) {
     return service.addStation(request);
   }
 
   @PutMapping("/stations/{code}")
   @PreAuthorize("hasAuthority('PERM_TENANT_PROFILE_MANAGE')")
   public TenantProfileService.Profile updateStation(@PathVariable String code,
-      @RequestBody TenantProfileService.StationInput request) {
+      @jakarta.validation.Valid @RequestBody TenantProfileService.StationInput request) {
     return service.updateStation(code, request);
   }
 

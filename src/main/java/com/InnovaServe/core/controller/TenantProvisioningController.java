@@ -45,7 +45,7 @@ public class TenantProvisioningController {
   @PostMapping
   public Map<String, Object> createTenant(
       @RequestHeader("X-Provisioning-Key") String suppliedKey,
-      @RequestBody ProvisionTenantRequest request) {
+      @jakarta.validation.Valid @RequestBody ProvisionTenantRequest request) {
     verifyProvisioningKey(suppliedKey);
     if (request.name() == null || request.name().isBlank())
       throw new IllegalArgumentException("Tenant name is required");
@@ -104,7 +104,7 @@ public class TenantProvisioningController {
   public Map<String, Object> replaceModules(
       @PathVariable UUID tenantId,
       @RequestHeader("X-Provisioning-Key") String suppliedKey,
-      @RequestBody ModuleSelectionRequest request) {
+      @jakarta.validation.Valid @RequestBody ModuleSelectionRequest request) {
     verifyProvisioningKey(suppliedKey);
     if (request.modules() == null)
       throw new IllegalArgumentException("modules is required when changing tenant modules");

@@ -20,7 +20,7 @@ public class PrinterInstallerController {
   public PrinterInstallerController(PrinterService printers,ObjectMapper json) { this.printers=printers; this.json=json; }
   @PostMapping("/{id}/agent-download")
   @PreAuthorize("hasAuthority('PERM_PRINTER_OPERATOR')")
-  public ResponseEntity<byte[]> download(@PathVariable UUID id,@RequestBody Map<String,String> input) throws IOException {
+  public ResponseEntity<byte[]> download(@PathVariable UUID id,@jakarta.validation.Valid @RequestBody Map<String,String> input) throws IOException {
     String api=input.getOrDefault("api_url","");
     URI uri;
     try { uri=URI.create(api); } catch(Exception e) { throw new IllegalArgumentException("Enter a valid backend API URL"); }

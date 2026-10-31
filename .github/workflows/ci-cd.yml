@@ -1,0 +1,128 @@
+name: Backend CI and Catalyst Development deployment
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Install pinned scanners
+        run: bash scripts/install-security-tools.sh "$RUNNER_TEMP/security-bin"
+      - name: Scan tracked working tree for secrets (redacted)
+        run: |
+          mkdir -p security-reports
+          "$RUNNER_TEMP/security-bin/gitleaks" dir . --redact --report-format json --report-path security-reports/secrets.json
+      - name: Scan Git history for committed secrets (redacted)
+        run: '"$RUNNER_TEMP/security-bin/gitleaks" git . --redact --report-format json --report-path security-reports/history-secrets.json'
+      - name: Package dependencies for vulnerability inspection
+        run: ./mvnw -B -ntp -Dmaven.test.skip=true package
+      - name: Block known High and Critical library vulnerabilities
+        run: bash scripts/scan-dependencies.sh "$RUNNER_TEMP/security-bin/trivy"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: security-reports/
+          retention-days: 7
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: innovaserve_test
+        ports: ['55447:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d innovaserve_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DB_URL: jdbc:postgresql://127.0.0.1:55447/innovaserve_test
+      PRINTER_TEST_DB_URL: jdbc:postgresql://127.0.0.1:55447/innovaserve_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Whitespace and deployment configuration checks
+        run: |
+          git show --format= --check HEAD
+          python3 -m json.tool catalyst.json > /dev/null
+          python3 -m json.tool app-config.json > /dev/null
+      - name: Unit tests, integration tests, migration validation and coverage gate
+        run: ./mvnw -B -ntp clean verify
+      - name: Stage deployable JAR
+        run: bash scripts/package-appsail.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-and-coverage-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+            target/site/jacoco/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appsail-jar
+          path: target/appsail/innovaserve.jar
+          if-no-files-found: error
+          retention-days: 14
+  deploy-development:
+    needs: [security, build]
+    # Linked CLI deploys replace Console-only AppSail variables. Keep this off until
+    # the release workflow can provide every runtime secret without committing it.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.CATALYST_CLI_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: catalyst-development
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: appsail-jar
+          path: target/appsail
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --global zcatalyst-cli@1.29.1
+      - name: Deploy tested artifact to Development
+        env:
+          CATALYST_TOKEN: ${{ secrets.CATALYST_TOKEN }}
+          CATALYST_PROJECT_ID: ${{ vars.CATALYST_PROJECT_ID }}
+          CATALYST_DC: ${{ vars.CATALYST_DC }}
+        run: |
+          set -euo pipefail
+          : "${CATALYST_TOKEN:?Set the Catalyst CI token}"
+          : "${CATALYST_PROJECT_ID:?Set the real Catalyst project ID}"
+          : "${CATALYST_DC:?Set the project data centre}"
+          test -s target/appsail/innovaserve.jar
+          catalyst deploy --only appsail:InnovaserveBE --project "$CATALYST_PROJECT_ID" --dc "$CATALYST_DC" --token "$CATALYST_TOKEN"
+      - name: Production promotion reminder
+        run: echo 'Validate Development, then promote this release to Catalyst Production in the console. CLI deploy is Development only.' >> "$GITHUB_STEP_SUMMARY"

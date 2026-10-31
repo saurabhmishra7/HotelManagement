@@ -13,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class NotificationService {
+  public record ReadyPickupGroup(String station, String locationKey, UUID focusOrderId,
+      List<String> details, boolean newlyReady) {}
+
   private final NotificationRepository notifications;
   private final StaffUserRepository users;
   private final StaffRoleRepository roles;
@@ -83,44 +86,48 @@ public class NotificationService {
   }
 
   @Transactional
-  public void syncReadyPickup(UUID tenantId, List<String> readyItems, boolean newlyReady,
-      UUID focusOrderId, String serviceStation) {
+  public void syncReadyPickup(UUID tenantId, List<ReadyPickupGroup> groups) {
     String source = "restaurant_order";
-    String key = focusOrderId == null ? "order-ready"
-        : "order-ready:route:" + ("kitchen".equals(serviceStation) ? "restaurant" : "bar") + ":" + focusOrderId;
-    // Retire item-level alerts from before grouping so each waiter sees one pickup alert.
     List<Notification> all = notifications.findAllByTenantIdAndSourceAndSourceKeyStartingWith(
         tenantId, source, "order-ready");
-    all.stream().filter(notification -> !"order-ready".equals(notification.getSourceKey())
-        && !notification.getSourceKey().startsWith("order-ready:route:"))
-        .filter(notification -> notification.getDismissedAt() == null).forEach(Notification::dismiss);
-    List<Notification> current = all.stream().filter(notification -> "order-ready".equals(notification.getSourceKey())
-        || notification.getSourceKey().startsWith("order-ready:route:")).toList();
-    if (readyItems.isEmpty()) {
-      current.stream().filter(notification -> notification.getDismissedAt() == null).forEach(Notification::dismiss);
-      return;
-    }
-    String title = readyItems.size() == 1 ? "1 item ready for pickup"
-        : readyItems.size() + " items ready for pickup";
-    String message = "Ready for pickup: " + String.join("; ", readyItems)
-        + ". Deliver each item, then mark it served in its Bar or Restaurant order.";
-    Map<UUID, Notification> byRecipient = new HashMap<>();
-    current.forEach(notification -> byRecipient.put(notification.getRecipientUserId(), notification));
-    if (newlyReady) {
+    Set<String> activeGroupPrefixes = new HashSet<>();
+    for (ReadyPickupGroup group : groups) {
+      String station = "kitchen".equals(group.station()) ? "restaurant" : "bar";
+      String prefix = "order-ready:route:" + station + ":" + group.locationKey() + ":";
+      String key = prefix + group.focusOrderId();
+      activeGroupPrefixes.add(prefix);
+      List<String> readyItems = group.details();
+      String title = readyItems.size() == 1 ? "1 item ready for pickup"
+          : readyItems.size() + " items ready for pickup";
+      String message = "Ready for pickup: " + String.join("; ", readyItems)
+          + ". Deliver each item, then mark it served in its Bar or Restaurant order.";
+      Map<UUID, Notification> byRecipient = new HashMap<>();
+      all.stream().filter(notification -> notification.getSourceKey() != null
+          && notification.getSourceKey().startsWith(prefix))
+          .forEach(notification -> byRecipient.put(notification.getRecipientUserId(), notification));
       for (StaffUser user : recipients(tenantId, "ORDER_CREATE", "WAITER")) {
         Notification notification = byRecipient.remove(user.getId());
         if (notification == null) {
           notifications.save(new Notification(tenantId, user.getId(), title, message, "IMPORTANT", source, key));
-        } else {
+        } else if (group.newlyReady()) {
           notification.reopenReadyItems(title, message, key);
+        } else {
+          notification.updateReadyItems(title, message, key, false);
         }
       }
       byRecipient.values().stream().filter(notification -> notification.getDismissedAt() == null)
           .forEach(Notification::dismiss);
-    } else {
-      current.stream().filter(notification -> notification.getDismissedAt() == null)
-          .forEach(notification -> notification.updateReadyItems(title, message, key, false));
     }
+    all.stream().filter(notification -> notification.getDismissedAt() == null)
+        .filter(notification -> {
+          String key = notification.getSourceKey();
+          if (key == null || !key.startsWith("order-ready:route:")) return true;
+          String[] parts = key.split(":");
+          // Dismiss legacy tenant-wide / order-only alerts and route groups that no longer have ready items.
+          if (parts.length < 5) return true;
+          String prefix = String.join(":", Arrays.copyOf(parts, 4)) + ":";
+          return !activeGroupPrefixes.contains(prefix);
+        }).forEach(Notification::dismiss);
   }
 
   @Transactional

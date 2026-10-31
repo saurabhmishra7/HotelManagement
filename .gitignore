@@ -1,7 +1,6 @@
 HELP.md
 /docs/
 /AGENTS.md
-/src/main/resources/application.properties
 target/
 var/expense-receipts/
 .mvn/wrapper/maven-wrapper.jar
@@ -35,3 +34,21 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local secrets and generated deployment state
+.env
+.env.*
+!.env.example
+.catalyst/
+.catalystrc
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+src/main/resources/application-dev.properties
+src/main/resources/application.dev.properties
+src/main/resources/application-local.properties
+target/
+artifacts/
+security-reports/

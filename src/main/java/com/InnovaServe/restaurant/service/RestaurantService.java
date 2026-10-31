@@ -227,6 +227,12 @@ public class RestaurantService {
   public DiningTable markTableDirty(UUID tableId) {
     DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), tableId)
         .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+    if ("free".equals(table.getStatus())) {
+      if (orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open"))
+        throw new IllegalStateException("An open order is still linked to this table");
+      table.markDirty();
+      return table;
+    }
     if (!"billed".equals(table.getStatus()))
       throw new IllegalStateException("Create the bill before marking this table dirty");
     if (orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open"))
@@ -260,6 +266,17 @@ public class RestaurantService {
     DiningTable table = tables.findByTenantIdAndId(tenant.tenantId(), tableId)
         .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
     table.markReady();
+    return table;
+  }
+
+  @Transactional
+  public DiningTable markTableVacant(UUID tableId) {
+    DiningTable table = tables.lockByTenantIdAndId(tenant.tenantId(), tableId)
+        .orElseThrow(() -> new NoSuchElementException("Dining table not found"));
+    if (orders.existsByTenantIdAndTableIdAndStatus(tenant.tenantId(), tableId, "open"))
+      throw new IllegalStateException("Cancel or complete the open order before marking this table vacant");
+    table.markVacant();
+    guestSessions.closeForTable(tenant.tenantId(), tableId);
     return table;
   }
 
@@ -710,11 +727,11 @@ public class RestaurantService {
         .orElseThrow(() -> new NoSuchElementException("Order item not found"));
     requireItemPreparationAccess(item);
     item.markReady();
-    refreshReadyNotifications(true);
+    refreshReadyNotifications(item.getId());
     return item;
   }
 
-  private void refreshReadyNotifications(boolean newlyReady) {
+  private void refreshReadyNotifications(UUID newlyReadyItemId) {
     List<OrderItem> readyItems = orderItems.findAllByTenantIdAndStatusOrderByReadyAtAscIdAsc(
         tenant.tenantId(), "ready");
     Set<UUID> orderIds = new HashSet<>();
@@ -742,16 +759,32 @@ public class RestaurantService {
           : orderLocation(order);
       locations.put(order.getId(), location);
     }
-    List<String> details = readyItems.stream().map(item ->
-        locations.getOrDefault(item.getOrderId(), "Unknown location")
-            + " · Order " + item.getOrderId().toString().substring(0, 8).toUpperCase(Locale.ROOT)
-            + ": " + item.getQuantity() + " × " + names.getOrDefault(item.getMenuItemId(), "Order item"))
-        .toList();
-    OrderItem focusItem = readyItems.isEmpty() ? null : readyItems.get(readyItems.size() - 1);
-    RestaurantOrder focusOrder = focusItem == null ? null : readyOrders.get(focusItem.getOrderId());
-    notifications.syncReadyPickup(tenant.tenantId(), details, newlyReady,
-        focusOrder == null ? null : focusOrder.getId(),
-        focusOrder == null ? null : focusOrder.getServiceStation());
+    Map<String, List<OrderItem>> itemsByLocation = readyItems.stream().collect(
+        java.util.stream.Collectors.groupingBy(item -> {
+          RestaurantOrder order = readyOrders.get(item.getOrderId());
+          String locationId = order == null ? "order-" + item.getOrderId()
+              : order.getTableId() != null ? "table-" + order.getTableId()
+              : order.getStayId() != null ? "stay-" + order.getStayId()
+              : "order-" + order.getId();
+          String station = order == null || "kitchen".equals(order.getServiceStation()) ? "restaurant" : "bar";
+          return station + ":" + locationId;
+        }, LinkedHashMap::new, java.util.stream.Collectors.toList()));
+    List<com.InnovaServe.core.service.NotificationService.ReadyPickupGroup> groups = new ArrayList<>();
+    itemsByLocation.forEach((groupKey, groupItems) -> {
+      OrderItem focusItem = groupItems.get(groupItems.size() - 1);
+      RestaurantOrder focusOrder = readyOrders.get(focusItem.getOrderId());
+      List<String> details = groupItems.stream().map(item ->
+          locations.getOrDefault(item.getOrderId(), "Unknown location")
+              + " · Order " + item.getOrderId().toString().substring(0, 8).toUpperCase(Locale.ROOT)
+              + ": " + item.getQuantity() + " × " + names.getOrDefault(item.getMenuItemId(), "Order item"))
+          .toList();
+      String locationKey = groupKey.substring(groupKey.indexOf(':') + 1);
+      boolean newlyReady = groupItems.stream().anyMatch(item -> item.getId().equals(newlyReadyItemId));
+      groups.add(new com.InnovaServe.core.service.NotificationService.ReadyPickupGroup(
+          focusOrder == null ? "kitchen" : focusOrder.getServiceStation(), locationKey,
+          focusOrder == null ? null : focusOrder.getId(), details, newlyReady));
+    });
+    notifications.syncReadyPickup(tenant.tenantId(), groups);
   }
 
   private String orderLocation(RestaurantOrder order) {
@@ -779,7 +812,7 @@ public class RestaurantService {
     boolean printerOnly = "thermal_printer".equals(tenantRecord.getRestaurantServiceMode());
     boolean wasReady = "ready".equals(item.getStatus());
     item.markServed(printerOnly);
-    if (wasReady) refreshReadyNotifications(false);
+    if (wasReady) refreshReadyNotifications(null);
     events.publishEvent(new OrderItemServedEvent(tenant.tenantId(), item.getMenuItemId(), item.getId(), item.getQuantity()));
     return item;
   }

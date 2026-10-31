@@ -20,7 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Run only against a disposable localhost database. Never reads application datasource settings. */
-@EnabledIfEnvironmentVariable(named="PRINTER_TEST_DB_URL",matches="jdbc:postgresql://127\\.0\\.0\\.1:55446/.*")
+@EnabledIfEnvironmentVariable(named="PRINTER_TEST_DB_URL",matches="jdbc:postgresql://127\\.0\\.0\\.1:55447/.*")
 class PrinterQueueIntegrationTest {
   static JdbcTemplate db;
   static TransactionTemplate tx;
@@ -28,7 +28,7 @@ class PrinterQueueIntegrationTest {
   UUID t,user,order,device;
   @BeforeAll static void migrate() {
     String url=System.getenv("PRINTER_TEST_DB_URL");
-    Flyway.configure().dataSource(url,"postgres","").locations("classpath:db/migration").load().migrate();
+    Flyway.configure().dataSource(url,"postgres","").schemas("core","stay","restaurant","expense","inventory","platform").defaultSchema("core").locations("classpath:db/migration").load().migrate();
     var ds=new DriverManagerDataSource(url,"postgres","");
     db=new JdbcTemplate(ds); tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
   }

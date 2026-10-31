@@ -38,7 +38,7 @@ public class PlatformPlanController {
 
   @PostMapping
   @PreAuthorize("hasAuthority('PLATFORM_PLANS_MANAGE')")
-  public Map<String, Object> create(@RequestBody PlanRequest request) {
+  public Map<String, Object> create(@jakarta.validation.Valid @RequestBody PlanRequest request) {
     return PlatformPlanService.snapshot(
         plans.create(
             request.name(),
@@ -53,7 +53,7 @@ public class PlatformPlanController {
   @PatchMapping("/{id}")
   @PreAuthorize("hasAuthority('PLATFORM_PLANS_MANAGE')")
   public Map<String, Object> update(
-      @PathVariable UUID id, @RequestBody PlanChangeRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody PlanChangeRequest request) {
     return plans.update(
             id,
             request.name(),

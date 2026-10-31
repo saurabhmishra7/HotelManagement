@@ -64,13 +64,13 @@ public class ExpenseController {
 
   @PostMapping("/expense-categories")
   @PreAuthorize("hasAuthority('PERM_EXPENSE_CREATE')")
-  public ExpenseCategory category(@RequestBody NameRequest r) {
+  public ExpenseCategory category(@jakarta.validation.Valid @RequestBody NameRequest r) {
     return service.addCategory(r.name());
   }
 
   @PostMapping("/expenses")
   @PreAuthorize("hasAuthority('PERM_EXPENSE_CREATE')")
-  public Map<String, Object> expense(@RequestBody ExpenseRequest r) {
+  public Map<String, Object> expense(@jakarta.validation.Valid @RequestBody ExpenseRequest r) {
     Expense e =
         service.addExpense(
             new ExpenseService.NewExpense(
@@ -98,7 +98,7 @@ public class ExpenseController {
 
   @PostMapping("/expenses/{id}/approve")
   @PreAuthorize("hasAuthority('PERM_EXPENSE_APPROVE')")
-  public Map<String, Object> approve(@PathVariable UUID id, @RequestBody ApproveRequest r) {
+  public Map<String, Object> approve(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody ApproveRequest r) {
     return Map.of("approval_status", service.approve(id, r.pin()).getApprovalStatus());
   }
 
@@ -113,7 +113,7 @@ public class ExpenseController {
 
   @PostMapping("/petty-cash/open")
   @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
-  public PettyCashLedger open(@RequestBody PettyOpen r) {
+  public PettyCashLedger open(@jakarta.validation.Valid @RequestBody PettyOpen r) {
     return service.openLedger(r.shiftDate(), r.openingFloat());
   }
 
@@ -125,19 +125,19 @@ public class ExpenseController {
 
   @PostMapping("/petty-cash/{id}/top-up")
   @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
-  public PettyCashLedger topup(@PathVariable UUID id, @RequestBody AmountRequest r) {
+  public PettyCashLedger topup(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody AmountRequest r) {
     return service.topup(id, r.amount());
   }
 
   @PostMapping("/petty-cash/{id}/reconcile")
   @PreAuthorize("hasAuthority('PERM_PETTY_CASH_MANAGE')")
-  public PettyCashLedger reconcile(@PathVariable UUID id, @RequestBody AmountRequest r) {
+  public PettyCashLedger reconcile(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody AmountRequest r) {
     return service.reconcile(id, r.amount());
   }
 
   @PostMapping("/recurring-expenses")
   @PreAuthorize("hasAuthority('PERM_RECURRING_EXPENSE_MANAGE')")
-  public RecurringExpense recurring(@RequestBody RecurringRequest r) {
+  public RecurringExpense recurring(@jakarta.validation.Valid @RequestBody RecurringRequest r) {
     return service.createRecurring(
         r.categoryId(), r.description(), r.amount(), r.frequency(), r.nextDueDate());
   }
@@ -156,7 +156,7 @@ public class ExpenseController {
 
   @PostMapping("/recurring-expenses/{id}/mark-paid")
   @PreAuthorize("hasAuthority('PERM_RECURRING_EXPENSE_MANAGE')")
-  public Map<String, Object> markPaid(@PathVariable UUID id, @RequestBody MarkPaid r) {
+  public Map<String, Object> markPaid(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody MarkPaid r) {
     return Map.of(
         "next_due_date",
         service

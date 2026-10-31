@@ -35,7 +35,7 @@ public class StaffUserController {
   }
 
   @PostMapping("/auth/invitations/accept")
-  public Map<String, Object> acceptInvitation(@RequestBody AcceptInvitation request) {
+  public Map<String, Object> acceptInvitation(@jakarta.validation.Valid @RequestBody AcceptInvitation request) {
     StaffUser user = invitations.accept(request.token(), request.password(), request.pin());
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("token", tokens.issue(user.getTenantId(), user.getId(), user.getRoleId()));
@@ -47,7 +47,7 @@ public class StaffUserController {
 
   @PostMapping("/staff-invitations")
   @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public ResponseEntity<Map<String, Object>> invite(@RequestBody InviteStaff request) {
+  public ResponseEntity<Map<String, Object>> invite(@jakarta.validation.Valid @RequestBody InviteStaff request) {
     Map<String, Object> result = approvals.invite(request.name(), request.phone(), request.email(), request.roleIds());
     return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
   }
@@ -72,7 +72,7 @@ public class StaffUserController {
 
   @PostMapping("/auth/login")
   public Map<String, Object> login(
-      @RequestHeader("X-Tenant-Id") UUID tenant, @RequestBody LoginRequest r) {
+      @RequestHeader("X-Tenant-Id") UUID tenant, @jakarta.validation.Valid @RequestBody LoginRequest r) {
     StaffUser u = service.authenticate(tenant, r.identity(), r.password());
     return Map.of("token", tokens.issue(tenant, u.getId(), u.getRoleId()), "user", user(u));
   }
@@ -84,20 +84,20 @@ public class StaffUserController {
 
   @PostMapping("/auth/password-reset/request")
   public ResponseEntity<Map<String, String>> requestPasswordReset(
-      @RequestBody PasswordResetRequest request) {
+      @jakarta.validation.Valid @RequestBody PasswordResetRequest request) {
     passwordResets.request(request.tenantCode(), request.email());
     return ResponseEntity.accepted()
         .body(Map.of("message", "If the account exists, password reset instructions were sent"));
   }
 
   @PostMapping("/auth/password-reset/confirm")
-  public Map<String, String> confirmPasswordReset(@RequestBody PasswordResetConfirm request) {
+  public Map<String, String> confirmPasswordReset(@jakarta.validation.Valid @RequestBody PasswordResetConfirm request) {
     passwordResets.confirm(request.tenantCode(), request.token(), request.newPassword());
     return Map.of("message", "Password has been reset; please log in again");
   }
 
   @PostMapping("/auth/email-verification/confirm")
-  public Map<String, String> confirmEmail(@RequestBody EmailVerificationConfirm request) {
+  public Map<String, String> confirmEmail(@jakarta.validation.Valid @RequestBody EmailVerificationConfirm request) {
     emailVerifications.confirm(request.token());
     return Map.of("message", "Email verified");
   }
@@ -110,7 +110,7 @@ public class StaffUserController {
 
   @PatchMapping("/user/{id}")
   @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public ResponseEntity<Map<String, Object>> update(@PathVariable UUID id, @RequestBody UpdateUser r) {
+  public ResponseEntity<Map<String, Object>> update(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody UpdateUser r) {
     Map<String, Object> result = approvals.update(id, r.name(),
         r.roleIds() != null ? r.roleIds() : r.roleId() == null ? null : List.of(r.roleId()), r.active());
     return Boolean.TRUE.equals(result.get("approval_required")) ? ResponseEntity.accepted().body(result) : ResponseEntity.ok(result);
@@ -118,14 +118,14 @@ public class StaffUserController {
 
   @PatchMapping("/user/{id}/printer-access")
   @PreAuthorize("hasAuthority('PERM_STAFF_MANAGE')")
-  public Map<String,Boolean> printerAccess(@PathVariable UUID id,@RequestBody Map<String,Boolean> body) {
+  public Map<String,Boolean> printerAccess(@PathVariable UUID id,@jakarta.validation.Valid @RequestBody Map<String,Boolean> body) {
     service.printerAccess(id,Boolean.TRUE.equals(body.get("enabled")));
     return Map.of("saved",true);
   }
 
   @PostMapping("/user/{id}/verify-pin")
   @PreAuthorize("hasAuthority('PERM_APPROVAL_PIN_VERIFY')")
-  public Map<String, Boolean> pin(@PathVariable UUID id, @RequestBody PinRequest r) {
+  public Map<String, Boolean> pin(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody PinRequest r) {
     return Map.of("valid", service.verifyPin(id, r.pin()));
   }
 

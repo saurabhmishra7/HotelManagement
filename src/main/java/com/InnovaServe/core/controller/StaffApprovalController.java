@@ -19,12 +19,12 @@ public class StaffApprovalController {
   public Map<String, Object> get(@PathVariable UUID id) { return service.get(id); }
 
   @PostMapping("/{id}/approve")
-  public Map<String, Object> approve(@PathVariable UUID id, @RequestBody PinRequest request) {
+  public Map<String, Object> approve(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody PinRequest request) {
     return service.review(id, request.pin(), true);
   }
 
   @PostMapping("/{id}/reject")
-  public Map<String, Object> reject(@PathVariable UUID id, @RequestBody PinRequest request) {
+  public Map<String, Object> reject(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody PinRequest request) {
     return service.review(id, request.pin(), false);
   }
 

@@ -29,7 +29,7 @@ public class PlatformSettingsController {
   }
 
   @PatchMapping
-  public Map<String, Object> update(@RequestBody SettingsRequest request) {
+  public Map<String, Object> update(@jakarta.validation.Valid @RequestBody SettingsRequest request) {
     PlatformAdmin admin = (PlatformAdmin) SecurityContextHolder.getContext()
         .getAuthentication().getPrincipal();
     return settings.update(

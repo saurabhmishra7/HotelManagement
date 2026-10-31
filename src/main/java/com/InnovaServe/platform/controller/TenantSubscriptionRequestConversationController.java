@@ -32,7 +32,7 @@ public class TenantSubscriptionRequestConversationController {
   @PostMapping("/comments")
   @PreAuthorize("hasAuthority('PERM_TENANT_SUBSCRIPTION_REQUEST')")
   public Map<String, Object> addComment(
-      @PathVariable UUID requestId, @RequestBody CommentRequest body) {
+      @PathVariable UUID requestId, @jakarta.validation.Valid @RequestBody CommentRequest body) {
     return conversations.addTenantComment(requestId, body.message());
   }
 

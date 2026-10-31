@@ -1,0 +1,18 @@
+{
+  "command": "java -XX:+UseContainerSupport -XX:MaxRAMPercentage=70.0 -XX:+ExitOnOutOfMemoryError -jar innovaserve.jar",
+  "build_path": "target/appsail",
+  "stack": "java21",
+  "platform": "javase",
+  "memory": 1024,
+  "env_variables": {
+    "SPRING_PROFILES_ACTIVE": "staging",
+    "APP_ALLOWED_ORIGINS": "http://localhost:3000,http://localhost:3002",
+    "PLATFORM_ALLOWED_ORIGINS": "http://localhost:5174",
+    "APP_SIGNUP_VERIFICATION_BASE_URL": "http://localhost:3000/",
+    "APP_PASSWORD_RESET_BASE_URL": "http://localhost:3000/",
+    "APP_STAFF_INVITATION_BASE_URL": "http://localhost:3000/invite",
+    "APP_STAFF_APPROVAL_BASE_URL": "http://localhost:3000/",
+    "APP_EMAIL_VERIFICATION_BASE_URL": "http://localhost:3000/",
+    "DB_POOL_SIZE": "5"
+  }
+}

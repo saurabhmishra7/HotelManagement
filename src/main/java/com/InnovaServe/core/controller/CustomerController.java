@@ -37,7 +37,7 @@ public class CustomerController {
 
   @PostMapping
   @PreAuthorize("hasAuthority('PERM_CUSTOMER_WRITE')")
-  public Map<String, Object> create(@RequestBody CustomerRequest request) {
+  public Map<String, Object> create(@jakarta.validation.Valid @RequestBody CustomerRequest request) {
     var result =
         service.createOrUpdate(
             request.name(),
@@ -51,7 +51,7 @@ public class CustomerController {
 
   @PatchMapping("/{id}")
   @PreAuthorize("hasAuthority('PERM_CUSTOMER_WRITE')")
-  public Customer update(@PathVariable UUID id, @RequestBody CustomerRequest request) {
+  public Customer update(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody CustomerRequest request) {
     return service.updateProfile(
         id,
         request.name(),

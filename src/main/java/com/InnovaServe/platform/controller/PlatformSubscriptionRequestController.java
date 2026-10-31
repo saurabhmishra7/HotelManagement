@@ -39,7 +39,7 @@ public class PlatformSubscriptionRequestController {
 
   @PatchMapping("/{id}")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
-  public Map<String, Object> update(@PathVariable UUID id, @RequestBody UpdateRequest body) {
+  public Map<String, Object> update(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody UpdateRequest body) {
     return service.update(id, body.status(), body.responseNote(), currentAdminId());
   }
 
@@ -52,21 +52,21 @@ public class PlatformSubscriptionRequestController {
   @PostMapping("/{id}/comments")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
   public Map<String, Object> addComment(
-      @PathVariable UUID id, @RequestBody CommentRequest body) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody CommentRequest body) {
     return conversations.addPlatformComment(id, body.message(), currentAdminId());
   }
 
   @PostMapping("/{id}/proposals/preview")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
   public List<Map<String, Object>> previewProposals(
-      @PathVariable UUID id, @RequestBody ProposalRequest body) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ProposalRequest body) {
     return conversations.preview(id, body.calculationTypes());
   }
 
   @PostMapping("/{id}/proposals")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
   public List<Map<String, Object>> createProposals(
-      @PathVariable UUID id, @RequestBody ProposalRequest body) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ProposalRequest body) {
     return conversations.createProposals(id, body.calculationTypes(), currentAdminId());
   }
 

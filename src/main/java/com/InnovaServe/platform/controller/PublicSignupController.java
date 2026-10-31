@@ -29,42 +29,42 @@ public class PublicSignupController {
   @PostMapping("/signup")
   @ResponseStatus(HttpStatus.CREATED)
   public Map<String, Object> signup(
-      @RequestBody PublicSignupService.SignupRequest request, HttpServletRequest servletRequest) {
+      @jakarta.validation.Valid @RequestBody PublicSignupService.SignupRequest request, HttpServletRequest servletRequest) {
     return signups.signup(request, servletRequest.getRemoteAddr());
   }
 
   @PostMapping("/signup/status")
-  public Map<String, Object> signupProgress(@RequestBody SignupId request) {
+  public Map<String, Object> signupProgress(@jakarta.validation.Valid @RequestBody SignupId request) {
     return signups.signupProgress(request.signupIntentId());
   }
 
   @PostMapping("/signup/email/resend")
-  public Map<String, Object> resendEmail(@RequestBody SignupId request, HttpServletRequest servletRequest) {
+  public Map<String, Object> resendEmail(@jakarta.validation.Valid @RequestBody SignupId request, HttpServletRequest servletRequest) {
     return signups.resendVerification(request.signupIntentId(), servletRequest.getRemoteAddr());
   }
 
   @PostMapping("/signup/email/confirm")
-  public Map<String, Object> confirmEmail(@RequestBody EmailToken request) {
+  public Map<String, Object> confirmEmail(@jakarta.validation.Valid @RequestBody EmailToken request) {
     return signups.confirmSignupEmail(request.token());
   }
 
   @PostMapping("/signup/continue")
-  public Map<String, Object> continueSignup(@RequestBody Continuation request) {
+  public Map<String, Object> continueSignup(@jakarta.validation.Valid @RequestBody Continuation request) {
     return signups.continueSignup(request.signupIntentId(), request.continuationToken());
   }
 
   @PostMapping("/signup/phone/confirm")
-  public Map<String, Object> confirmPhone(@RequestBody PhoneProof request) {
+  public Map<String, Object> confirmPhone(@jakarta.validation.Valid @RequestBody PhoneProof request) {
     return signups.verifySignupPhone(request.signupIntentId(), request.continuationToken(), request.providerProof());
   }
 
   @PostMapping("/signup/complete")
-  public Map<String, Object> complete(@RequestBody PublicSignupService.PaymentCompletion request) {
+  public Map<String, Object> complete(@jakarta.validation.Valid @RequestBody PublicSignupService.PaymentCompletion request) {
     return signups.completePayment(request);
   }
 
   @PostMapping("/signup/demo-complete")
-  public Map<String, Object> completeDemo(@RequestBody DemoCompletionRequest request) {
+  public Map<String, Object> completeDemo(@jakarta.validation.Valid @RequestBody DemoCompletionRequest request) {
     return signups.completeDemoPayment(request.signupIntentId());
   }
 

@@ -25,7 +25,7 @@ class StationOrderFlowTest {
   private final org.springframework.context.ApplicationEventPublisher events = mock(org.springframework.context.ApplicationEventPublisher.class);
   private final RestaurantService service = new RestaurantService(
       tenant, null, null, menu, tables, orders, orderItems, batches, bills,
-      null, null, null, null, events, null, null, null, stations);
+      null, null, null, null, events, null, null, null, stations, mock(DishFeedbackService.class));
 
   private void order(String station) {
     when(tenant.tenantId()).thenReturn(tenantId);

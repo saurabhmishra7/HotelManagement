@@ -54,7 +54,7 @@ public class PlatformTenantController {
   @PostMapping("/{id}/subscription")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
   public Map<String, Object> subscribe(
-      @PathVariable UUID id, @RequestBody SubscriptionRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody SubscriptionRequest request) {
     return subscriptions.subscribe(
         id,
         request.planId(),
@@ -73,7 +73,7 @@ public class PlatformTenantController {
   @PostMapping("/{id}/subscription-proposals")
   @PreAuthorize("hasAuthority('PLATFORM_SUBSCRIPTIONS_MANAGE')")
   public Map<String, Object> proposeSubscription(
-      @PathVariable UUID id, @RequestBody ProposalRequest request) {
+      @PathVariable UUID id, @jakarta.validation.Valid @RequestBody ProposalRequest request) {
     return subscriptionRequests.proposePrice(id, request.planId(), request.proposedPrice(),
         request.message(), currentAdminId());
   }

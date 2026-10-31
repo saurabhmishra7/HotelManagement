@@ -49,13 +49,13 @@ public class StaffRoleController {
 
   @PostMapping
   @PreAuthorize("hasAuthority('PERM_ROLE_MANAGE')")
-  public StaffRole create(@RequestBody RoleRequest request) {
+  public StaffRole create(@jakarta.validation.Valid @RequestBody RoleRequest request) {
     return service.create(request.role(), request.permissions());
   }
 
   @PutMapping("/{id}")
   @PreAuthorize("hasAuthority('PERM_ROLE_MANAGE')")
-  public StaffRole update(@PathVariable UUID id, @RequestBody UpdateRoleRequest request) {
+  public StaffRole update(@PathVariable UUID id, @jakarta.validation.Valid @RequestBody UpdateRoleRequest request) {
     return service.update(id, request.permissions());
   }
 

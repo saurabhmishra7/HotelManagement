@@ -25,7 +25,7 @@ public class PlatformNotificationController {
         .map(t -> new TenantOption(t.getId(), t.getName(), t.getTenantCode())).toList();
   }
   @PostMapping @ResponseStatus(HttpStatus.CREATED)
-  public void send(@RequestBody NoticeRequest request) {
+  public void send(@jakarta.validation.Valid @RequestBody NoticeRequest request) {
     notifications.sendPlatformNotice(request.tenantIds(), Boolean.TRUE.equals(request.allTenants()), request.title(), request.message());
   }
   public record TenantOption(UUID id, String name, @JsonProperty("tenant_code") String tenantCode) {}

@@ -45,10 +45,15 @@ public class ApiSecurityConfiguration {
   @Bean
   SecurityFilterChain apiFilterChain(HttpSecurity http, BearerTokenFilter filter) throws Exception {
     return http.csrf(c -> c.disable())
+        .headers(h -> h.frameOptions(f -> f.deny())
+            .contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'; base-uri 'none'"))
+            .httpStrictTransportSecurity(t -> t.includeSubDomains(true).maxAgeInSeconds(31536000)))
+        .cors(org.springframework.security.config.Customizer.withDefaults())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             a ->
-                a.requestMatchers("/api/v1/auth/login").permitAll()
+                a.requestMatchers(HttpMethod.GET, "/health").permitAll()
+                    .requestMatchers("/api/v1/auth/login").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/auth/invitations/accept").permitAll()
                     // These endpoints authenticate a revocable device key (or staff permission) in PrinterService.
                     .requestMatchers(HttpMethod.GET, "/api/v1/printer-devices/pending-jobs").permitAll()
