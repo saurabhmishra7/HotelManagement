@@ -1,0 +1,43 @@
+# Catalyst Pipelines for the InnovaServe Java 21 backend.
+# Configure DOCKERHUB_USERNAME, DOCKERHUB_TOKEN, and BUCKET_NAME as
+# pipeline Global Variables in the Catalyst Console. Do not commit tokens.
+# AppSail deployment remains a separate Console step until runtime secrets
+# can be preserved safely during an automated release.
+version: 1.0
+
+pipeline-when:
+  equal:
+    - << event.ref >>
+    - refs/heads/main
+
+runners:
+  backend-build:
+    config-id: 3
+
+images:
+  java21:
+    image: maven:3.9-eclipse-temurin-21
+    auth:
+      username: << env.DOCKERHUB_USERNAME >>
+      password: << env.DOCKERHUB_TOKEN >>
+
+jobs:
+  package-backend:
+    steps:
+      - java -version
+      - ./mvnw -B -ntp -Dmaven.test.skip=true clean package
+      - bash scripts/package-appsail.sh
+      - jar --create --no-manifest --file target/innovaserve-appsail-console.zip -C target/appsail innovaserve.jar
+    artifacts:
+      upload:
+        - type: file
+          name: innovaserve-appsail-console.zip
+          file: target/innovaserve-appsail-console.zip
+          location: stratus://<< env.BUCKET_NAME >>/
+
+stages:
+  - name: build
+    runner: backend-build
+    image: java21
+    jobs:
+      - package-backend
