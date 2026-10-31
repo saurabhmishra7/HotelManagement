@@ -30,8 +30,12 @@ public class EmailSenderConfiguration {
       ObjectProvider<JavaMailSender> smtpSenders,
       ObjectMapper mapper,
       Environment environment) {
-    boolean devResend = environment.acceptsProfiles(Profiles.of("dev"))
-        && "resend".equalsIgnoreCase(provider.trim());
+    boolean devProfile = environment.acceptsProfiles(Profiles.of("dev"));
+    boolean stagingProfile = environment.acceptsProfiles(Profiles.of("staging"));
+    boolean hasDevRecipient = devRecipient != null && !devRecipient.isBlank();
+    boolean devResend = !environment.acceptsProfiles(Profiles.of("prod"))
+        && "resend".equalsIgnoreCase(provider.trim())
+        && (devProfile || (stagingProfile && hasDevRecipient));
     EmailSender sender = switch (provider.trim().toLowerCase(java.util.Locale.ROOT)) {
       case "resend" -> new ResendEmailSender(
           devResend ? "InnovaServe <onboarding@resend.dev>" : from, resendApiKey, mapper);
@@ -41,7 +45,7 @@ public class EmailSenderConfiguration {
       default -> throw new IllegalArgumentException("Unsupported app.mail.provider: " + provider);
     };
     if (!devResend) return sender;
-    if (devRecipient == null || devRecipient.isBlank())
+    if (!hasDevRecipient)
       throw new IllegalStateException("Set APP_MAIL_DEV_RECIPIENT to your Resend account email for the dev profile");
     return new DevResendEmailSender(sender, devRecipient.trim());
   }
